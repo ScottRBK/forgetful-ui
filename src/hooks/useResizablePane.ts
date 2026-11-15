@@ -3,10 +3,10 @@ import type {
   Dispatch,
   KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
-  RefObject,
+  RefCallback,
   SetStateAction,
 } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 const HANDLE_WIDTH = 9
 const COLUMN_GAP_TOTAL = 32
@@ -35,7 +35,7 @@ interface ResizeHandleProps {
 }
 
 interface ResizablePane {
-  layoutRef: RefObject<HTMLDivElement | null>
+  layoutRef: RefCallback<HTMLDivElement>
   width: number
   maxWidth: number
   expanded: boolean
@@ -56,7 +56,10 @@ export function useResizablePane({
   const [actualMaxWidth, setActualMaxWidth] = useState(maxWidth)
   const [expanded, setExpanded] = useState(false)
   const widthRef = useRef(defaultWidth)
-  const layoutRef = useRef<HTMLDivElement | null>(null)
+  const [layoutElement, setLayoutElement] = useState<HTMLDivElement | null>(null)
+  const layoutRef = useCallback((element: HTMLDivElement | null) => {
+    setLayoutElement(element)
+  }, [])
   const dragRef = useRef<{ startX: number; startWidth: number } | null>(null)
   const resizeCleanupRef = useRef<(() => void) | null>(null)
 
@@ -67,7 +70,7 @@ export function useResizablePane({
   }, [])
 
   useEffect(() => {
-    const element = layoutRef.current
+    const element = layoutElement
     if (!element) return
 
     const updateBounds = (): void => {
@@ -102,7 +105,7 @@ export function useResizablePane({
     observer.observe(element)
     updateBounds()
     return () => observer.disconnect()
-  }, [maxWidth, minListWidth, minWidth])
+  }, [layoutElement, maxWidth, minListWidth, minWidth])
 
   function clamp(value: number): number {
     return Math.min(Math.max(value, minWidth), actualMaxWidth)

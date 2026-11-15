@@ -6,12 +6,14 @@ const json = (body: unknown, status = 200) => ({
   body: JSON.stringify(body),
 })
 
-async function findCopperCentroid(page: Page): Promise<{
+type CopperCentroid = {
   width: number
   height: number
   x: number
   y: number
-} | null> {
+}
+
+async function findCopperCentroid(page: Page): Promise<CopperCentroid | null> {
   return page.locator('canvas').evaluate((canvas: HTMLCanvasElement) => {
     const context = canvas.getContext('2d')
     if (!context) throw new Error('Canvas context missing')
@@ -35,6 +37,33 @@ async function findCopperCentroid(page: Page): Promise<{
     }
     return count > 0 ? { width, height, x: sumX / count, y: sumY / count } : null
   })
+}
+
+async function findStableCopperCentroid(page: Page): Promise<CopperCentroid> {
+  let previous: CopperCentroid | null = null
+  let stable: CopperCentroid | null = null
+  let stableSamples = 0
+  await expect
+    .poll(
+      async () => {
+        const current = await findCopperCentroid(page)
+        const unchanged =
+          current &&
+          previous &&
+          current.width === previous.width &&
+          current.height === previous.height &&
+          Math.abs(current.x - previous.x) <= 0.5 &&
+          Math.abs(current.y - previous.y) <= 0.5
+        stableSamples = unchanged ? stableSamples + 1 : 0
+        stable = stableSamples >= 4 ? current : null
+        previous = current
+        return stable !== null
+      },
+      { timeout: 10_000, intervals: [250] },
+    )
+    .toBe(true)
+  if (!stable) throw new Error('Canvas entity node did not stabilise')
+  return stable
 }
 
 async function measureInkBounds(page: Page): Promise<{ width: number; height: number }> {
@@ -767,8 +796,7 @@ test('selects a visible canvas node by clicking it', async ({ page }) => {
   const canvas = page.locator('canvas')
   await page.goto('/#/graph?memory=1301')
   await expect(canvas).toBeVisible()
-  await page.waitForTimeout(2000)
-  const target = await findCopperCentroid(page)
+  const target = await findStableCopperCentroid(page)
   const box = await canvas.boundingBox()
   if (!box || !target) throw new Error('Canvas entity node not found')
 

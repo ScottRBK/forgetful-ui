@@ -104,21 +104,17 @@ test('reads the available remaining pages without mutations', async ({ page }) =
     await expect(page.getByRole('link', { name: 'View project memories' })).toBeVisible({
       timeout: 15_000,
     })
-    const tasksSection = page
-      .locator('section')
-      .filter({ has: page.getByRole('heading', { name: 'Tasks', level: 4 }) })
-    await expect(
-      tasksSection
-        .getByRole('list')
-        .or(tasksSection.getByText('This plan has no tasks.', { exact: true })),
-    ).toBeVisible({ timeout: 15_000 })
-    const taskLink = tasksSection.getByRole('list').getByRole('link').first()
-    if ((await taskLink.count()) > 0) {
-      await taskLink.click()
+    await expect(page.locator('[data-plan-board]')).toBeVisible({ timeout: 15_000 })
+    await expect(page.getByRole('region', { name: 'To do', exact: true })).toBeVisible()
+    const taskCard = page.locator('[data-plan-board] [data-task-id]').first()
+    if ((await taskCard.count()) > 0) {
+      await taskCard.click()
       await expect(
         page.locator('[data-task-detail]').getByText('Criteria', { exact: true }),
       ).toBeVisible({ timeout: 15_000 })
     }
+    await page.getByRole('link', { name: 'Back to plans' }).click()
+    await expect(page.getByRole('heading', { name: 'Plans', level: 2 })).toBeVisible()
   }
   await expect(page.getByRole('alert')).toHaveCount(0)
 

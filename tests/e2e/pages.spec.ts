@@ -443,7 +443,7 @@ test('projects supports filters, detail and project memory link', async ({ page 
   expect(requests.some((url) => url.pathname === '/api/v1/documents')).toBe(false)
 })
 
-test('plans shows goal, plan-scoped tasks and task detail', async ({ page }) => {
+test('plans filters open an active plan board and return with filters', async ({ page }) => {
   const requests = await installBaseApi(page, {
     projects: [syntheticProject],
     plans: [syntheticPlan],
@@ -452,47 +452,1026 @@ test('plans shows goal, plan-scoped tasks and task detail', async ({ page }) => 
   })
 
   await page.goto('/#/plans')
-  await expect(page.getByRole('heading', { name: 'Plans' })).toBeVisible()
-  await page.getByRole('link', { name: /Synthetic plan/ }).click()
-
-  await expect(page.getByText('Synthetic plan goal.')).toBeVisible()
-  await expect(page.getByText('Synthetic plan context.')).toBeVisible()
-  await page.getByRole('link', { name: /Synthetic task/ }).click()
-
-  await expect(page.getByText('Synthetic task description.')).toBeVisible()
-  await expect(page.getByText('Synthetic criterion one')).toBeVisible()
-  await expect(page.getByText('Synthetic criterion two')).toBeVisible()
-  await expect(page.getByText('65')).toBeVisible()
-  await expect(page.getByText('1/2 met')).toBeVisible()
-  await expect(page).toHaveURL(/#\/plans\/55\?task=66/)
-
-  const taskLists = requests.filter((url) => url.pathname === '/api/v1/tasks')
-  expect(taskLists).toHaveLength(1)
-  expect(taskLists[0]?.searchParams.get('plan_id')).toBe('55')
-  const taskDetail = requests.filter((url) => url.pathname === '/api/v1/tasks/66')
-  expect(taskDetail).toHaveLength(1)
-
-  await page.getByRole('link', { name: /Synthetic all-met task/ }).click()
-  await expect(page.getByText('2/2 met')).toBeVisible()
-  await expect(page).toHaveURL(/#\/plans\/55\?task=67$/)
-
-  const planStatusRequestPromise = page.waitForRequest((request) => {
+  await expect(page.getByRole('heading', { name: 'Plans', level: 2 })).toBeVisible()
+  const statusRequestPromise = page.waitForRequest((request) => {
     const url = new URL(request.url())
     return url.pathname === '/api/v1/plans' && url.searchParams.get('status') === 'active'
   })
   await page.getByLabel('Plan status filter').selectOption('active')
-  const planStatusRequest = await planStatusRequestPromise
-  await expect(page).toHaveURL(/#\/plans\/55\?task=67&status=active$/)
-  expect(new URL(planStatusRequest.url()).searchParams.get('status')).toBe('active')
+  const statusRequest = await statusRequestPromise
+  await expect(page).toHaveURL(/#\/plans\?status=active$/)
+  expect(new URL(statusRequest.url()).searchParams.get('status')).toBe('active')
 
-  const planProjectRequestPromise = page.waitForRequest((request) => {
+  const projectRequestPromise = page.waitForRequest((request) => {
     const url = new URL(request.url())
     return url.pathname === '/api/v1/plans' && url.searchParams.get('project_id') === '1'
   })
   await page.getByLabel('Project filter').selectOption('1')
-  const planProjectRequest = await planProjectRequestPromise
+  const projectRequest = await projectRequestPromise
+  await expect(page).toHaveURL(/#\/plans\?project=1&status=active$/)
+  expect(new URL(projectRequest.url()).searchParams.get('project_id')).toBe('1')
+
+  await page.getByRole('link', { name: /Synthetic plan/ }).click()
+  await expect(page).toHaveURL(/#\/plans\/55\?project=1&status=active$/)
+  const header = page.locator('[data-plan-header]')
+  await expect(header.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
+  await expect(header.getByText('Synthetic plan goal.')).toBeVisible()
+  await header.getByText('Plan context and metadata').click()
+  await expect(header.getByText('Synthetic plan context.')).toBeVisible()
+
+  await page.getByRole('link', { name: /Synthetic task/ }).click()
+  const detail = page.locator('[data-task-detail]')
+  await expect(detail.getByText('Synthetic task description.')).toBeVisible()
+  await expect(detail.getByText('Synthetic criterion one')).toBeVisible()
+  await expect(detail.getByText('Synthetic criterion two')).toBeVisible()
+  await expect(detail.getByText('65', { exact: true })).toBeVisible()
+  await expect(detail.getByText('1/2 met')).toBeVisible()
+  await expect(page).toHaveURL(/#\/plans\/55\?task=66&project=1&status=active$/)
+
+  const taskLists = requests.filter((url) => url.pathname === '/api/v1/tasks')
+  expect(taskLists).toHaveLength(1)
+  expect(taskLists[0]?.searchParams.get('plan_id')).toBe('55')
+  expect(requests.filter((url) => url.pathname === '/api/v1/tasks/66')).toHaveLength(1)
+
+  await page.getByRole('link', { name: /Synthetic all-met task/ }).click()
+  await expect(detail.getByText('2/2 met')).toBeVisible()
   await expect(page).toHaveURL(/#\/plans\/55\?task=67&project=1&status=active$/)
-  expect(new URL(planProjectRequest.url()).searchParams.get('project_id')).toBe('1')
+
+  await page.getByRole('link', { name: 'Back to plans' }).click()
+  await expect(page).toHaveURL(/#\/plans\?project=1&status=active$/)
+  await expect(page.getByRole('heading', { name: 'Plans', level: 2 })).toBeVisible()
+  await expect(page.getByLabel('Project filter')).toHaveValue('1')
+  await expect(page.getByLabel('Plan status filter')).toHaveValue('active')
+  await expect(page.getByRole('link', { name: /Synthetic plan/ })).toBeVisible()
+})
+
+test('plan board shows five states, blocked badge and summary cards only', async ({ page }) => {
+  const stateTasks = [
+    {
+      ...syntheticTaskSummary,
+      id: 201,
+      title: 'Synthetic to do task',
+      state: 'todo',
+      priority: 'P0',
+      blocked: true,
+    },
+    { ...syntheticTaskSummary, id: 202, title: 'Synthetic doing task', state: 'doing' },
+    { ...syntheticTaskSummary, id: 203, title: 'Synthetic waiting task', state: 'waiting' },
+    { ...syntheticTaskSummary, id: 204, title: 'Synthetic done task', state: 'done' },
+    { ...syntheticTaskSummary, id: 205, title: 'Synthetic cancelled task', state: 'cancelled' },
+  ]
+  const requests = await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [syntheticPlan],
+    taskSummaries: stateTasks,
+    taskDetails: stateTasks.map((task) => ({
+      ...syntheticTaskDetail,
+      id: task.id,
+      title: task.title,
+      state: task.state,
+    })),
+  })
+
+  await page.goto('/#/plans/55?project=1&status=active')
+  const header = page.locator('[data-plan-header]')
+  await expect(header.getByRole('heading', { name: 'Synthetic plan', level: 2 })).toBeVisible()
+  await expect(header.getByText('Synthetic plan goal.')).toBeVisible()
+  await expect(header.getByRole('link', { name: 'Synthetic project', exact: true })).toBeVisible()
+  await expect(header.getByText('active', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Back to plans' })).toHaveAttribute(
+    'href',
+    '#/plans?project=1&status=active',
+  )
+
+  const states = [
+    ['To do', 'Synthetic to do task'],
+    ['Doing', 'Synthetic doing task'],
+    ['Waiting', 'Synthetic waiting task'],
+    ['Done', 'Synthetic done task'],
+    ['Cancelled', 'Synthetic cancelled task'],
+  ] as const
+  for (const [column, title] of states) {
+    const region = page.getByRole('region', { name: column, exact: true })
+    await expect(region).toBeVisible()
+    await expect(region.getByText('1 task', { exact: true })).toBeVisible()
+    await expect(region.getByRole('link', { name: new RegExp(title) })).toBeVisible()
+  }
+
+  const todo = page.getByRole('region', { name: 'To do', exact: true })
+  const todoCard = todo.getByRole('link', { name: /Synthetic to do task/ })
+  await expect(todoCard.getByText('Blocked', { exact: true })).toBeVisible()
+  await expect(todoCard.getByText('Priority P0', { exact: true })).toBeVisible()
+  await expect(todoCard.getByText('Agent synthetic-agent', { exact: true })).toBeVisible()
+  await expect(todoCard.getByText('1/2 criteria', { exact: true })).toBeVisible()
+
+  expect(requests.filter((url) => url.pathname === '/api/v1/plans')).toHaveLength(0)
+  expect(requests.filter((url) => url.pathname === '/api/v1/projects/1')).toHaveLength(0)
+  expect(requests.filter((url) => url.pathname === '/api/v1/tasks')).toHaveLength(1)
+  expect(requests.filter((url) => /^\/api\/v1\/tasks\/\d+$/.test(url.pathname))).toHaveLength(0)
+  expect(
+    new URL(requests.find((url) => url.pathname === '/api/v1/tasks')?.href ?? '').searchParams.get(
+      'plan_id',
+    ),
+  ).toBe('55')
+  await expect(page.locator('[data-task-detail]')).toHaveCount(0)
+})
+
+test('plan board preserves backend task order within a state', async ({ page }) => {
+  const first = { ...syntheticTaskSummary, id: 211, title: 'First ordered task', state: 'doing' }
+  const second = { ...syntheticTaskSummary, id: 212, title: 'Second ordered task', state: 'doing' }
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [syntheticPlan],
+    taskSummaries: [first, second],
+  })
+
+  await page.goto('/#/plans/55')
+  const doing = page.getByRole('region', { name: 'Doing', exact: true })
+  await expect(doing.getByText('2 tasks', { exact: true })).toBeVisible()
+  const cards = doing.getByRole('link')
+  await expect(cards).toHaveCount(2)
+  await expect(cards.nth(0)).toContainText('First ordered task')
+  await expect(cards.nth(1)).toContainText('Second ordered task')
+})
+
+test('plan board loads detail only on selection and keeps filters when closing', async ({
+  page,
+}) => {
+  const requests = await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [syntheticPlan],
+    taskSummaries: [syntheticTaskSummary, syntheticTaskAllSummary],
+    taskDetails: [syntheticTaskDetail, syntheticTaskAllDetail],
+  })
+
+  await page.goto('/#/plans?project=1&status=active')
+  const planRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/plans/55'
+  })
+  await page.getByRole('link', { name: /Synthetic plan/ }).click()
+  await planRequestPromise
+  await expect(page.getByRole('region', { name: 'Doing', exact: true })).toBeVisible()
+  expect(requests.filter((url) => /^\/api\/v1\/tasks\/\d+$/.test(url.pathname))).toHaveLength(0)
+
+  const detailRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/tasks/66'
+  })
+  await page.getByRole('link', { name: /Synthetic task/ }).click()
+  await detailRequestPromise
+  const detail = page.locator('[data-task-detail]')
+  await expect(detail.getByText('Synthetic task description.')).toBeVisible()
+  await expect(detail.getByText('Synthetic criterion one')).toBeVisible()
+  await expect(detail.getByText('Synthetic criterion two')).toBeVisible()
+  await expect(detail.getByText('1/2 met')).toBeVisible()
+  await expect(detail.getByText('65', { exact: true })).toBeVisible()
+  await expect(page).toHaveURL(/#\/plans\/55\?task=66&project=1&status=active$/)
+  expect(requests.filter((url) => url.pathname === '/api/v1/tasks/67')).toHaveLength(0)
+
+  await page.reload()
+  await expect(
+    page.locator('[data-task-detail]').getByText('Synthetic task description.'),
+  ).toBeVisible()
+  await expect(page).toHaveURL(/#\/plans\/55\?task=66&project=1&status=active$/)
+
+  const detailId = await detail.getAttribute('id')
+  const handle = page.getByRole('separator', { name: 'Resize task details' })
+  await expect(handle).toBeVisible()
+  expect(await handle.getAttribute('aria-controls')).toBe(detailId)
+  expect(Number(await handle.getAttribute('aria-valuenow'))).toBeGreaterThan(0)
+  expect(Number(await handle.getAttribute('aria-valuemax'))).toBeGreaterThan(
+    Number(await handle.getAttribute('aria-valuemin')),
+  )
+  const requestsBeforeResize = requests.length
+  const before = await detail.boundingBox()
+  const handleBox = await handle.boundingBox()
+  if (!before || !handleBox) throw new Error('Missing task resize geometry')
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + 80)
+  await page.mouse.down()
+  await page.mouse.move(handleBox.x - 80, handleBox.y + 80, { steps: 8 })
+  await page.mouse.up()
+  await expect
+    .poll(async () => (await detail.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(before.width + 40)
+
+  const minWidth = Number(await handle.getAttribute('aria-valuemin'))
+  await handle.press('Home')
+  await expect.poll(async () => (await detail.boundingBox())?.width ?? 0).toBeCloseTo(minWidth, 0)
+  await expect.poll(async () => Number(await handle.getAttribute('aria-valuenow'))).toBe(minWidth)
+  const atMin = await detail.boundingBox()
+  if (!atMin) throw new Error('Missing minimum task detail width')
+  expect(atMin.width).toBeLessThanOrEqual(minWidth + 1)
+
+  const maxWidth = Number(await handle.getAttribute('aria-valuemax'))
+  await handle.press('End')
+  await expect.poll(async () => (await detail.boundingBox())?.width ?? 0).toBeCloseTo(maxWidth, 0)
+  await expect.poll(async () => Number(await handle.getAttribute('aria-valuenow'))).toBe(maxWidth)
+  const atMax = await detail.boundingBox()
+  if (!atMax) throw new Error('Missing maximum task detail width')
+  expect(atMax.width).toBeLessThanOrEqual(maxWidth + 1)
+
+  await page.getByRole('button', { name: 'Expand task details' }).click()
+  await expect(page.locator('[data-plan-board]')).toBeHidden()
+  await expect
+    .poll(async () => (await detail.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(atMax.width)
+  await page.getByRole('button', { name: 'Restore task details' }).click()
+  await expect(page.locator('[data-plan-board]')).toBeVisible()
+  await expect.poll(async () => (await detail.boundingBox())?.width ?? 0).toBeCloseTo(maxWidth, 0)
+  expect(requests.length).toBe(requestsBeforeResize)
+
+  await page.goBack()
+  await expect(page).toHaveURL(/#\/plans\/55\?project=1&status=active$/)
+  await expect(page.locator('[data-task-detail]')).toHaveCount(0)
+  await expect(page.getByRole('link', { name: /Synthetic task/ })).toBeVisible()
+  await page.goForward()
+  await expect(page.locator('[data-task-detail]')).toBeVisible()
+  await expect(page.getByText('Synthetic task description.')).toBeVisible()
+  await page.getByRole('link', { name: 'Back to board' }).click()
+  await expect(page).toHaveURL(/#\/plans\/55\?project=1&status=active$/)
+  await expect(page.locator('[data-task-detail]')).toHaveCount(0)
+
+  await page.getByRole('link', { name: 'Back to plans' }).click()
+  await expect(page).toHaveURL(/#\/plans\?project=1&status=active$/)
+  await expect(page.getByLabel('Project filter')).toHaveValue('1')
+  await expect(page.getByLabel('Plan status filter')).toHaveValue('active')
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/#/plans/55?task=66&project=1&status=active')
+  const mobileDetail = page.locator('[data-task-detail]')
+  await expect(mobileDetail.getByText('Synthetic task description.')).toBeVisible()
+  await expect(page.locator('[data-plan-board]')).toBeHidden()
+  await expect(page.getByRole('separator', { name: 'Resize task details' })).toBeHidden()
+  const mobileBox = await mobileDetail.boundingBox()
+  if (!mobileBox) throw new Error('Missing mobile task detail')
+  expect(mobileBox.width).toBeLessThanOrEqual(390)
+  let overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+  expect(overflow).toBeLessThanOrEqual(1)
+
+  await page.getByRole('link', { name: 'Back to board' }).click()
+  await expect(page.locator('[data-plan-board]')).toBeVisible()
+  await expect(page.locator('[data-task-id="66"]')).toBeFocused()
+  await expect(page).toHaveURL(/#\/plans\/55\?project=1&status=active$/)
+  overflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+  expect(overflow).toBeLessThanOrEqual(1)
+})
+
+test('plan board manually refreshes plan, summaries and selected task detail', async ({ page }) => {
+  const initialPlan = { ...syntheticPlan, title: 'Initial synthetic plan', goal: 'Initial goal.' }
+  const refreshedPlan = {
+    ...syntheticPlan,
+    title: 'Refreshed synthetic plan',
+    goal: 'Refreshed goal.',
+  }
+  const initialTask = { ...syntheticTaskSummary, title: 'Initial board task', state: 'doing' }
+  const refreshedTask = {
+    ...syntheticTaskSummary,
+    title: 'Refreshed board task',
+    state: 'done',
+    criteria_met: 2,
+    criteria_total: 2,
+  }
+  const initialDetail = { ...syntheticTaskDetail, description: 'Initial task description.' }
+  const refreshedDetail = {
+    ...syntheticTaskDetail,
+    description: 'Refreshed task description.',
+    state: 'done',
+    criteria: [
+      { id: 11, task_id: 66, description: 'Refreshed criterion one', met: true },
+      { id: 12, task_id: 66, description: 'Refreshed criterion two', met: true },
+    ],
+  }
+  let phase: 'initial' | 'refresh' = 'initial'
+  let releaseRefresh: (() => void) | undefined
+  const refreshGate = new Promise<void>((resolve) => {
+    releaseRefresh = resolve
+  })
+  await installBaseApi(page, { projects: [syntheticProject] })
+  await page.route('**/api/v1/plans/55', async (route) => {
+    if (phase === 'refresh') await refreshGate
+    await route.fulfill(json(phase === 'refresh' ? refreshedPlan : initialPlan))
+  })
+  let summaryRequests = 0
+  let detailRequests = 0
+  await page.route('**/api/v1/tasks**', async (route) => {
+    const url = new URL(route.request().url())
+    if (phase === 'refresh') await refreshGate
+    if (url.pathname === '/api/v1/tasks') {
+      summaryRequests += 1
+      const tasks = phase === 'refresh' ? [refreshedTask] : [initialTask]
+      await route.fulfill(json({ tasks, total: tasks.length }))
+      return
+    }
+    const match = /^\/api\/v1\/tasks\/(\d+)$/.exec(url.pathname)
+    if (match?.[1] === '66') {
+      detailRequests += 1
+      await route.fulfill(json(phase === 'refresh' ? refreshedDetail : initialDetail))
+      return
+    }
+    await route.fulfill(json({ error: 'Unexpected task request' }, 500))
+  })
+
+  await page.goto('/#/plans/55?task=66')
+  await expect(page.getByRole('heading', { name: 'Initial synthetic plan' })).toBeVisible()
+  await expect(page.getByText('Initial task description.')).toBeVisible()
+  await expect(page.getByText('Initial board task')).toBeVisible()
+
+  phase = 'refresh'
+  const planRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/plans/55'
+  })
+  const summaryRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/tasks' && url.searchParams.get('plan_id') === '55'
+  })
+  const detailRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/tasks/66'
+  })
+  await page.getByRole('button', { name: 'Refresh board' }).click()
+  await expect(page.getByText('Refreshing board…', { exact: true })).toBeVisible()
+  releaseRefresh?.()
+  await Promise.all([planRequestPromise, summaryRequestPromise, detailRequestPromise])
+
+  await expect(page.getByRole('heading', { name: 'Refreshed synthetic plan' })).toBeVisible()
+  await expect(page.getByText('Refreshed goal.')).toBeVisible()
+  await expect(page.getByText('Refreshed board task')).toBeVisible()
+  await expect(
+    page.getByRole('region', { name: 'Done', exact: true }).getByText('Refreshed board task'),
+  ).toBeVisible()
+  await expect(page.getByText('Refreshed task description.')).toBeVisible()
+  await expect(page.getByText('Refreshed criterion one')).toBeVisible()
+  await expect(page.getByText('2/2 met')).toBeVisible()
+  await expect(page.getByText('Refreshing board…', { exact: true })).toHaveCount(0)
+  expect(summaryRequests).toBe(2)
+  expect(detailRequests).toBe(2)
+})
+
+test('task detail bounds match the real board width at 1024', async ({ page }) => {
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [syntheticPlan],
+    taskSummaries: [syntheticTaskSummary],
+    taskDetails: [syntheticTaskDetail],
+  })
+
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await page.goto('/#/plans/55?task=66')
+  const layout = page.locator('[data-plan-board-layout]')
+  const detail = page.locator('[data-task-detail]')
+  const handle = page.getByRole('separator', { name: 'Resize task details' })
+  await expect(detail.locator('h3')).toHaveText('Synthetic task')
+
+  const layoutWidth = await layout.evaluate((element) => element.getBoundingClientRect().width)
+  const expectedMax = Math.min(640, Math.max(300, layoutWidth - 360 - 9 - 32))
+  await expect
+    .poll(async () => Number(await handle.getAttribute('aria-valuemax')))
+    .toBe(Math.round(expectedMax))
+  await expect
+    .poll(async () => (await detail.boundingBox())?.width ?? 0)
+    .toBeCloseTo(expectedMax, 0)
+  await expect
+    .poll(async () => Number(await handle.getAttribute('aria-valuenow')))
+    .toBe(Math.round(expectedMax))
+
+  await handle.press('End')
+  await expect
+    .poll(async () => (await detail.boundingBox())?.width ?? 0)
+    .toBeCloseTo(expectedMax, 0)
+  expect(Number(await handle.getAttribute('aria-valuenow'))).toBe(Math.round(expectedMax))
+  expect(Number(await handle.getAttribute('aria-valuemax'))).toBe(Math.round(expectedMax))
+
+  await handle.press('ArrowRight')
+  const narrowed = Math.round(expectedMax) - 20
+  await expect.poll(async () => Number(await handle.getAttribute('aria-valuenow'))).toBe(narrowed)
+  await expect.poll(async () => (await detail.boundingBox())?.width ?? 0).toBeCloseTo(narrowed, 0)
+
+  const handleBox = await handle.boundingBox()
+  if (!handleBox) throw new Error('Missing 1024 task handle')
+  await page.mouse.move(handleBox.x + handleBox.width / 2, handleBox.y + 80)
+  await page.mouse.down()
+  await page.mouse.move(handleBox.x - 200, handleBox.y + 80, { steps: 8 })
+  await page.mouse.up()
+  await expect
+    .poll(async () => (await detail.boundingBox())?.width ?? 0)
+    .toBeCloseTo(expectedMax, 0)
+  expect(Number(await handle.getAttribute('aria-valuenow'))).toBe(Math.round(expectedMax))
+
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await expect.poll(async () => Number(await handle.getAttribute('aria-valuemax'))).toBe(640)
+  await handle.press('End')
+  await expect.poll(async () => (await detail.boundingBox())?.width ?? 0).toBeCloseTo(640, 0)
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await expect
+    .poll(async () => Number(await handle.getAttribute('aria-valuemax')))
+    .toBe(Math.round(expectedMax))
+  await expect
+    .poll(async () => (await detail.boundingBox())?.width ?? 0)
+    .toBeCloseTo(expectedMax, 0)
+  await expect
+    .poll(async () => Number(await handle.getAttribute('aria-valuenow')))
+    .toBe(Math.round(expectedMax))
+
+  const refreshPlanPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/plans/55'
+  })
+  const refreshTasksPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/tasks' && url.searchParams.get('plan_id') === '55'
+  })
+  const refreshDetailPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/tasks/66'
+  })
+  await page.getByRole('button', { name: 'Refresh board' }).click()
+  await Promise.all([refreshPlanPromise, refreshTasksPromise, refreshDetailPromise])
+  await expect(page.getByText('Refreshing board…', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
+  await expect
+    .poll(async () => Number(await handle.getAttribute('aria-valuemax')))
+    .toBe(Math.round(expectedMax))
+  await expect
+    .poll(async () => (await detail.boundingBox())?.width ?? 0)
+    .toBeCloseTo(expectedMax, 0)
+  expect(Number(await handle.getAttribute('aria-valuenow'))).toBe(Math.round(expectedMax))
+})
+
+test('manual refresh keeps board, focused control, scroll and pane width', async ({ page }) => {
+  let holdRefresh = false
+  let failRefresh = false
+  let releaseRefresh: (() => void) | undefined
+  const refreshGate = new Promise<void>((resolve) => {
+    releaseRefresh = resolve
+  })
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [syntheticPlan],
+    taskSummaries: [syntheticTaskSummary],
+    taskDetails: [syntheticTaskDetail],
+  })
+  await page.route('**/api/v1/plans/55', async (route) => {
+    if (holdRefresh) await refreshGate
+    if (failRefresh) {
+      await route.fulfill(json({ error: 'Synthetic refresh failure' }, 500))
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await page.goto('/#/plans/55?task=66')
+  const board = page.locator('[data-plan-board]')
+  const detail = page.locator('[data-task-detail]')
+  const handle = page.getByRole('separator', { name: 'Resize task details' })
+  const refresh = page.getByRole('button', { name: 'Refresh board' })
+  const scroll = page.locator('[data-board-scroll]')
+  await expect(board).toBeVisible()
+  await expect(detail.locator('h3')).toHaveText('Synthetic task')
+
+  const layoutWidth = await page
+    .locator('[data-plan-board-layout]')
+    .evaluate((element) => element.getBoundingClientRect().width)
+  const expectedMax = Math.round(Math.min(640, Math.max(300, layoutWidth - 360 - 9 - 32)))
+  await handle.press('End')
+  await expect
+    .poll(async () => (await detail.boundingBox())?.width ?? 0)
+    .toBeCloseTo(expectedMax, 0)
+  await scroll.evaluate((element) => {
+    element.scrollLeft = 120
+  })
+  await refresh.focus()
+  await expect(refresh).toBeFocused()
+
+  holdRefresh = true
+  const planRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/plans/55'
+  })
+  await refresh.click()
+  await planRequestPromise
+  await expect(page.getByText('Refreshing board…', { exact: true })).toBeVisible()
+  await expect(board).toBeVisible()
+  await expect(detail).toBeVisible()
+  await expect(refresh).toBeFocused()
+  expect(await scroll.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+  expect((await detail.boundingBox())?.width ?? 0).toBeCloseTo(expectedMax, 0)
+
+  holdRefresh = false
+  releaseRefresh?.()
+  await expect(page.getByText('Refreshing board…', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
+  await expect(refresh).toBeFocused()
+  await expect(board).toBeVisible()
+  await expect(detail.locator('h3')).toHaveText('Synthetic task')
+  expect(await scroll.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0)
+  expect((await detail.boundingBox())?.width ?? 0).toBeCloseTo(expectedMax, 0)
+  expect(Number(await handle.getAttribute('aria-valuenow'))).toBe(expectedMax)
+  expect(Number(await handle.getAttribute('aria-valuemax'))).toBe(expectedMax)
+
+  failRefresh = true
+  const failedRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/plans/55'
+  })
+  await refresh.click()
+  await failedRequestPromise
+  await expect(page.getByRole('alert')).toContainText('Could not refresh plan')
+  await expect(page.getByText(/Showing the previous plan/)).toBeVisible()
+  await expect(board).toBeVisible()
+  await expect(detail).toBeVisible()
+  await expect(refresh).toBeFocused()
+
+  failRefresh = false
+  const retryRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/plans/55'
+  })
+  await page.getByRole('alert').getByRole('button', { name: 'Retry' }).click()
+  await retryRequestPromise
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(board).toBeVisible()
+  await expect(detail.locator('h3')).toHaveText('Synthetic task')
+})
+
+test('mobile task deep link focuses detail when plan data arrives', async ({ page }) => {
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [syntheticPlan],
+    taskSummaries: [syntheticTaskSummary],
+    taskDetails: [syntheticTaskDetail],
+  })
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/#/plans/55?task=66')
+  const detail = page.locator('[data-task-detail]')
+  await expect(detail.getByText('Synthetic task description.')).toBeVisible()
+  await expect(page.locator('[data-plan-board]')).toBeHidden()
+  await expect(detail).toBeFocused()
+  await expect(detail.getByRole('link', { name: 'Back to board' })).toBeVisible()
+
+  const refresh = page.getByRole('button', { name: 'Refresh board' })
+  const refreshRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/plans/55'
+  })
+  await refresh.focus()
+  await expect(refresh).toBeFocused()
+  await refresh.click()
+  await refreshRequestPromise
+  await expect(page.getByText('Refreshing board…', { exact: true })).toHaveCount(0)
+  await expect(refresh).toBeFocused()
+  await expect(detail).not.toBeFocused()
+  await expect(detail.getByText('Synthetic task description.')).toBeVisible()
+})
+
+test('retained board data is scoped to the current plan', async ({ page }) => {
+  let releaseSecond: (() => void) | undefined
+  const secondGate = new Promise<void>((resolve) => {
+    releaseSecond = resolve
+  })
+  const firstPlan = { ...syntheticPlan, id: 55, title: 'First retained plan' }
+  const secondPlan = { ...syntheticPlan, id: 56, title: 'Second retained plan' }
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [firstPlan, secondPlan],
+    taskSummaries: [],
+  })
+  await page.route('**/api/v1/plans/56', async (route) => {
+    await secondGate
+    await route.fulfill(json(secondPlan))
+  })
+
+  await page.goto('/#/plans/55')
+  await expect(page.getByRole('heading', { name: 'First retained plan' })).toBeVisible()
+  await page.goto('/#/plans/56')
+  await expect(page.getByText('Loading plan…')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'First retained plan' })).toHaveCount(0)
+  await expect(page.locator('[data-plan-board]')).toHaveCount(0)
+
+  releaseSecond?.()
+  await expect(page.getByRole('heading', { name: 'Second retained plan' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'First retained plan' })).toHaveCount(0)
+})
+
+test('task detail bounds observe the layout after initial plan error recovery', async ({
+  page,
+}) => {
+  let failPlan = true
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [syntheticPlan],
+    taskSummaries: [syntheticTaskSummary],
+    taskDetails: [syntheticTaskDetail],
+  })
+  await page.route('**/api/v1/plans/55', async (route) => {
+    if (failPlan) {
+      await route.fulfill(json({ error: 'Synthetic initial plan failure' }, 500))
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await page.goto('/#/plans/55?task=66')
+  await expect(page.getByRole('alert')).toContainText('Could not load plan')
+  failPlan = false
+  const planRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/plans/55'
+  })
+  await page.getByRole('alert').getByRole('button', { name: 'Retry' }).click()
+  await planRequestPromise
+
+  const detail = page.locator('[data-task-detail]')
+  const handle = page.getByRole('separator', { name: 'Resize task details' })
+  await expect(detail.locator('h3')).toHaveText('Synthetic task')
+  const layoutWidth = await page
+    .locator('[data-plan-board-layout]')
+    .evaluate((element) => element.getBoundingClientRect().width)
+  const expectedMax = Math.round(Math.min(640, Math.max(300, layoutWidth - 360 - 9 - 32)))
+  await expect
+    .poll(async () => Number(await handle.getAttribute('aria-valuemax')))
+    .toBe(expectedMax)
+  await expect
+    .poll(async () => (await detail.boundingBox())?.width ?? 0)
+    .toBeCloseTo(expectedMax, 0)
+  await expect
+    .poll(async () => Number(await handle.getAttribute('aria-valuenow')))
+    .toBe(expectedMax)
+})
+
+test('empty plan board keeps all five task columns visible', async ({ page }) => {
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [syntheticPlan],
+    taskSummaries: [],
+    taskDetails: [],
+  })
+
+  await page.goto('/#/plans/55')
+  const states = ['To do', 'Doing', 'Waiting', 'Done', 'Cancelled']
+  for (const state of states) {
+    const region = page.getByRole('region', { name: state, exact: true })
+    await expect(region).toBeVisible()
+    await expect(region.getByText('0 tasks', { exact: true })).toBeVisible()
+    await expect(region.getByText('No tasks', { exact: true })).toBeVisible()
+  }
+  await expect(page.getByText('No tasks', { exact: true })).toHaveCount(5)
+  await expect(
+    page.locator('[data-plan-header]').getByText('0 tasks', { exact: true }),
+  ).toBeVisible()
+})
+
+test('plan board task failure is not empty and retries', async ({ page }) => {
+  let attempts = 0
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [syntheticPlan],
+    taskSummaries: [syntheticTaskSummary],
+  })
+  await page.route('**/api/v1/tasks**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname === '/api/v1/tasks') {
+      attempts += 1
+      if (attempts === 1) {
+        await route.fulfill(json({ error: 'Synthetic task failure' }, 500))
+        return
+      }
+      await route.fulfill(json({ tasks: [syntheticTaskSummary], total: 1 }))
+      return
+    }
+    await route.fulfill(json(syntheticTaskDetail))
+  })
+
+  await page.goto('/#/plans/55')
+  await expect(page.getByRole('alert')).toContainText('Could not load tasks')
+  await expect(page.getByText('No tasks', { exact: true })).toHaveCount(0)
+  const retryRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/tasks' && url.searchParams.get('plan_id') === '55'
+  })
+  await page.getByRole('alert').getByRole('button', { name: 'Retry' }).click()
+  await retryRequestPromise
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByRole('region', { name: 'Doing', exact: true })).toBeVisible()
+  await expect(page.getByText('Synthetic task', { exact: true })).toBeVisible()
+})
+
+test('plan board handles plan and task 404 responses explicitly', async ({ page }) => {
+  const requests = await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [syntheticPlan],
+    taskSummaries: [syntheticTaskSummary],
+  })
+  let failPlan = true
+  await page.route('**/api/v1/plans/55', async (route) => {
+    if (failPlan) {
+      await route.fulfill(json({ error: 'Plan not found' }, 404))
+      return
+    }
+    await route.fallback()
+  })
+  await page.route('**/api/v1/tasks/99', (route) =>
+    route.fulfill(json({ error: 'Task not found' }, 404)),
+  )
+
+  await page.goto('/#/plans/55')
+  await expect(page.getByText('Plan not found', { exact: true })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Back to plans' })).toBeVisible()
+  expect(requests.some((url) => url.pathname === '/api/v1/tasks')).toBe(false)
+
+  failPlan = false
+  await page.goto('/#/plans')
+  await page.goto('/#/plans/55?task=99')
+  await expect(page.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
+  await expect(page.locator('[data-task-detail]').getByText('Task not found')).toBeVisible()
+  await expect(page.getByText('Synthetic task description.')).toHaveCount(0)
+})
+
+test('plan board ignores a late task detail response after another card opens', async ({
+  page,
+}) => {
+  let releaseFirst: (() => void) | undefined
+  let firstHandled: (() => void) | undefined
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve
+  })
+  const firstDone = new Promise<void>((resolve) => {
+    firstHandled = resolve
+  })
+  const firstDetail = { ...syntheticTaskDetail, description: 'First stale task description.' }
+  const secondDetail = {
+    ...syntheticTaskAllDetail,
+    description: 'Second current task description.',
+  }
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [syntheticPlan],
+    taskSummaries: [syntheticTaskSummary, syntheticTaskAllSummary],
+  })
+  await page.route('**/api/v1/tasks/66', async (route) => {
+    await firstGate
+    await route.fulfill(json(firstDetail)).catch(() => undefined)
+    firstHandled?.()
+  })
+  await page.route('**/api/v1/tasks/67', (route) => route.fulfill(json(secondDetail)))
+
+  await page.goto('/#/plans/55')
+  await expect(page.getByRole('region', { name: 'Doing', exact: true })).toBeVisible()
+  await page.getByRole('link', { name: /Synthetic task/ }).click()
+  await page.getByRole('link', { name: /Synthetic all-met task/ }).click()
+  await expect(page.locator('[data-task-detail]').getByText('2/2 met')).toBeVisible()
+
+  releaseFirst?.()
+  await firstDone
+  await expect(page.locator('[data-task-detail]').getByText('2/2 met')).toBeVisible()
+  await expect(page.getByText('Second current task description.')).toBeVisible()
+  await expect(page.getByText('First stale task description.')).toHaveCount(0)
+  await expect(page.getByText('Synthetic criterion one')).toHaveCount(0)
+})
+
+test('plan board refresh failure shows an error and retries task summaries', async ({ page }) => {
+  let failTasks = false
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [syntheticPlan],
+    taskSummaries: [syntheticTaskSummary],
+  })
+  await page.route('**/api/v1/tasks**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname === '/api/v1/tasks') {
+      if (failTasks) {
+        await route.fulfill(json({ error: 'Synthetic refresh failure' }, 500))
+        return
+      }
+      await route.fulfill(json({ tasks: [syntheticTaskSummary], total: 1 }))
+      return
+    }
+    await route.fulfill(json(syntheticTaskDetail))
+  })
+
+  await page.goto('/#/plans/55')
+  await expect(page.getByRole('region', { name: 'Doing', exact: true })).toBeVisible()
+  failTasks = true
+  const refreshRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/tasks' && url.searchParams.get('plan_id') === '55'
+  })
+  await page.getByRole('button', { name: 'Refresh board' }).click()
+  await refreshRequestPromise
+  await expect(page.getByRole('alert')).toContainText('Could not refresh tasks')
+  await expect(page.getByText(/Showing previous task summaries/)).toBeVisible()
+  await expect(page.getByRole('region', { name: 'Doing', exact: true })).toBeVisible()
+  await expect(page.getByText('Synthetic task', { exact: true })).toBeVisible()
+
+  failTasks = false
+  const retryRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/tasks' && url.searchParams.get('plan_id') === '55'
+  })
+  await page.getByRole('alert').getByRole('button', { name: 'Retry' }).click()
+  await retryRequestPromise
+  await expect(page.getByRole('region', { name: 'Doing', exact: true })).toBeVisible()
+  await expect(page.getByText('Synthetic task', { exact: true })).toBeVisible()
+})
+
+test('plan board selected task refresh failure is explicit and retryable', async ({ page }) => {
+  let failDetail = false
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [syntheticPlan],
+    taskSummaries: [syntheticTaskSummary],
+    taskDetails: [syntheticTaskDetail],
+  })
+  await page.route('**/api/v1/tasks/66', async (route) => {
+    if (failDetail) {
+      await route.fulfill(json({ error: 'Synthetic detail refresh failure' }, 500))
+      return
+    }
+    await route.fulfill(json(syntheticTaskDetail))
+  })
+
+  await page.goto('/#/plans/55?task=66')
+  await expect(page.getByText('Synthetic task description.')).toBeVisible()
+  failDetail = true
+  const refreshRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/tasks/66'
+  })
+  await page.getByRole('button', { name: 'Refresh board' }).click()
+  await refreshRequestPromise
+  const detailPanel = page.locator('[data-task-detail]')
+  await expect(detailPanel.getByRole('alert')).toContainText('Could not load task')
+  await expect(page.getByText('Synthetic task description.')).toHaveCount(0)
+
+  failDetail = false
+  const retryRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/tasks/66'
+  })
+  await detailPanel.getByRole('alert').getByRole('button', { name: 'Retry' }).click()
+  await retryRequestPromise
+  await expect(page.getByText('Synthetic task description.')).toBeVisible()
+  await expect(detailPanel.getByText('1/2 met')).toBeVisible()
+})
+
+test('plan board refresh failure on plan metadata is explicit and retryable', async ({ page }) => {
+  let failPlan = false
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [syntheticPlan],
+    taskSummaries: [syntheticTaskSummary],
+  })
+  await page.route('**/api/v1/plans/55', async (route) => {
+    if (failPlan) {
+      await route.fulfill(json({ error: 'Synthetic plan refresh failure' }, 500))
+      return
+    }
+    await route.fallback()
+  })
+
+  await page.goto('/#/plans/55')
+  await expect(page.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
+  failPlan = true
+  const refreshRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/plans/55'
+  })
+  await page.getByRole('button', { name: 'Refresh board' }).click()
+  await refreshRequestPromise
+  await expect(page.getByRole('alert')).toContainText('Could not refresh plan')
+  await expect(page.getByText(/Showing the previous plan/)).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
+
+  failPlan = false
+  const retryRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/plans/55'
+  })
+  await page.getByRole('alert').getByRole('button', { name: 'Retry' }).click()
+  await retryRequestPromise
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
+})
+
+test('plan board wraps long unbroken names and task text inside panels', async ({ page }) => {
+  const longProjectName = `Project${'P'.repeat(173)}`
+  const longPlanTitle = `Plan${'L'.repeat(176)}`
+  const longTaskTitle = `Task${'T'.repeat(176)}`
+  const longAgent = `Agent${'A'.repeat(95)}`
+  const longGoal = `Goal${'G'.repeat(176)}`
+  const longDescription = `Description${'D'.repeat(170)}`
+  const longCriterion = `Criterion${'C'.repeat(171)}`
+  const project = { ...syntheticProject, name: longProjectName }
+  const plan = { ...syntheticPlan, title: longPlanTitle, goal: longGoal, project_id: 1 }
+  const summary = {
+    ...syntheticTaskSummary,
+    title: longTaskTitle,
+    state: 'todo',
+    assigned_agent: longAgent,
+  }
+  const detail = {
+    ...syntheticTaskDetail,
+    title: longTaskTitle,
+    description: longDescription,
+    assigned_agent: longAgent,
+    criteria: [{ id: 31, task_id: 66, description: longCriterion, met: true }],
+  }
+  await installBaseApi(page, {
+    projects: [project],
+    plans: [plan],
+    taskSummaries: [summary],
+    taskDetails: [detail],
+  })
+
+  async function expectWrappedInside(
+    text: ReturnType<Page['getByText']>,
+    containerSelector: string,
+  ) {
+    await expect(text).toBeVisible()
+    const metrics = await text.evaluate((element, selector) => {
+      const container = element.closest(selector)
+      if (!container) throw new Error(`Missing container ${selector}`)
+      const box = container.getBoundingClientRect()
+      const range = document.createRange()
+      range.selectNodeContents(element)
+      const rectangles = [...range.getClientRects()].filter((rect) => rect.width > 0)
+      return {
+        fits: rectangles.every((rect) => rect.left >= box.left - 1 && rect.right <= box.right + 1),
+        lines: rectangles.length,
+      }
+    }, containerSelector)
+    expect(metrics.fits).toBe(true)
+    expect(metrics.lines).toBeGreaterThan(1)
+  }
+
+  for (const width of [1440, 1024, 390]) {
+    await page.setViewportSize({ width, height: 1000 })
+    await page.goto('/#/plans/55?project=1&status=active')
+    const header = page.locator('[data-plan-header]')
+    await expectWrappedInside(
+      header.getByRole('heading', { name: longPlanTitle, exact: true }),
+      '[data-plan-header]',
+    )
+    await expectWrappedInside(
+      header.getByRole('link', { name: longProjectName, exact: true }),
+      '[data-plan-header]',
+    )
+    await expectWrappedInside(header.getByText(longGoal, { exact: true }), '[data-plan-header]')
+    const card = page.locator('[data-task-id="66"]')
+    await expectWrappedInside(card.getByText(longTaskTitle, { exact: true }), '[data-task-id="66"]')
+    await expectWrappedInside(
+      card.getByText(`Agent ${longAgent}`, { exact: true }),
+      '[data-task-id="66"]',
+    )
+    let overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(1)
+    if (width === 390) {
+      const scroll = await page.locator('[data-board-scroll]').evaluate((element) => ({
+        scrollWidth: element.scrollWidth,
+        clientWidth: element.clientWidth,
+      }))
+      expect(scroll.scrollWidth).toBeGreaterThan(scroll.clientWidth)
+    }
+
+    await page.goto('/#/plans/55?task=66&project=1&status=active')
+    const taskDetail = page.locator('[data-task-detail]')
+    if (width >= 1024) {
+      const handle = page.getByRole('separator', { name: 'Resize task details' })
+      await handle.press('Home')
+      const minWidth = Number(await handle.getAttribute('aria-valuemin'))
+      await expect
+        .poll(async () => (await taskDetail.boundingBox())?.width ?? 0)
+        .toBeCloseTo(minWidth, 0)
+    }
+    await expectWrappedInside(
+      taskDetail.getByRole('heading', { name: longTaskTitle, exact: true }),
+      '[data-task-detail]',
+    )
+    await expectWrappedInside(
+      taskDetail.getByText(longDescription, { exact: true }),
+      '[data-task-detail]',
+    )
+    await expectWrappedInside(taskDetail.getByText(longCriterion), '[data-task-detail]')
+    overflow = await page.evaluate(
+      () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+    )
+    expect(overflow).toBeLessThanOrEqual(1)
+    if (width === 390) {
+      const box = await taskDetail.boundingBox()
+      if (!box) throw new Error('Missing mobile task detail')
+      expect(box.width).toBeLessThanOrEqual(390)
+    }
+  }
 })
 
 test('documents filters and renders content as inert text', async ({ page }) => {
@@ -768,6 +1747,13 @@ test('planning disabled does not request plans, tasks or project options', async
   expect(requests.some((url) => url.pathname === '/api/v1/plans')).toBe(false)
   expect(requests.some((url) => url.pathname === '/api/v1/tasks')).toBe(false)
   expect(requests.some((url) => url.pathname === '/api/v1/projects')).toBe(false)
+
+  await page.goto('/#/plans/55')
+  await expect(page.getByText('Planning is unavailable')).toBeVisible()
+  expect(requests.some((url) => url.pathname === '/api/v1/plans')).toBe(false)
+  expect(requests.some((url) => url.pathname === '/api/v1/tasks')).toBe(false)
+  expect(requests.some((url) => /^\/api\/v1\/plans\/\d+$/.test(url.pathname))).toBe(false)
+  expect(requests.some((url) => url.pathname === '/api/v1/projects')).toBe(false)
 })
 
 test('unknown capability discovery allows a careful files read', async ({ page }) => {
@@ -904,9 +1890,13 @@ test('remaining pages remain usable across 390, 1024 and 1440 widths', async ({ 
 
   await page.goto('/#/plans')
   await page.getByRole('link', { name: /Synthetic plan/ }).click()
+  await expect(page.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
   await page.getByRole('link', { name: /Synthetic task/ }).click()
   await expect(page.locator('[data-task-detail]')).toBeFocused()
   await expect(page.getByText('Synthetic task description.')).toBeVisible()
+  await page.getByRole('link', { name: 'Back to board' }).click()
+  await expect(page.locator('[data-plan-board]')).toBeVisible()
+  await expect(page.locator('[data-task-id="66"]')).toBeFocused()
 })
 
 test('new page routes survive reload and browser back/forward', async ({ page }) => {
@@ -1296,6 +2286,14 @@ test('network failure reaches unknown capability and retryable resource errors',
       await route.fulfill(json({ plans: [syntheticPlan], total: 1 }))
       return
     }
+    if (url.pathname === '/api/v1/plans/55') {
+      await route.fulfill(json(syntheticPlan))
+      return
+    }
+    if (url.pathname === '/api/v1/tasks') {
+      await route.fulfill(json({ tasks: [], total: 0 }))
+      return
+    }
     if (url.pathname === '/api/v1/memories') {
       await route.fulfill(json({ memories: [syntheticMemory], total: 1, limit: 5, offset: 0 }))
       return
@@ -1324,9 +2322,17 @@ test('network failure reaches unknown capability and retryable resource errors',
   await expect(page.getByRole('link', { name: /Synthetic plan/ })).toBeVisible({
     timeout: 10_000,
   })
+
+  await page.goto('/#/plans/55')
+  await expect(page.getByText(/Planning availability is unknown/)).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
+  await expect(page.getByRole('region', { name: 'To do', exact: true })).toBeVisible()
+  await expect(page.getByText('No tasks', { exact: true })).toHaveCount(5)
 })
 
-test('plans show the project name in list and detail from a deep link', async ({ page }) => {
+test('plan board shows project names from a deep link without loading all plans', async ({
+  page,
+}) => {
   const requests = await installBaseApi(page, {
     capabilities: {
       schema_version: 1,
@@ -1339,23 +2345,22 @@ test('plans show the project name in list and detail from a deep link', async ({
   })
 
   await page.goto('/#/plans/55')
-  await expect(page.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
-  const detail = page.locator('[data-resource-detail]')
-  await expect(detail.getByText('Synthetic project', { exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: /Synthetic plan/ })).toContainText(
-    'Synthetic project',
-  )
+  const header = page.locator('[data-plan-header]')
+  await expect(header.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
+  await expect(header.getByRole('link', { name: 'Synthetic project', exact: true })).toBeVisible()
+  expect(requests.filter((url) => url.pathname === '/api/v1/plans')).toHaveLength(0)
 
   const projectListsBeforeSelection = requests.filter(
     (url) => url.pathname === '/api/v1/projects',
   ).length
-  await page.getByRole('link', { name: /Second synthetic plan/ }).click()
-  await expect(page.getByRole('heading', { name: 'Second synthetic plan' })).toBeVisible()
-  await expect(detail.getByText('Synthetic project', { exact: true })).toBeVisible()
+  await page.goto('/#/plans/56')
+  await expect(header.getByRole('heading', { name: 'Second synthetic plan' })).toBeVisible()
+  await expect(header.getByRole('link', { name: 'Synthetic project', exact: true })).toBeVisible()
   expect(requests.filter((url) => url.pathname === '/api/v1/projects')).toHaveLength(
-    projectListsBeforeSelection,
+    projectListsBeforeSelection + 1,
   )
   expect(requests.some((url) => /^\/api\/v1\/projects\/\d+$/.test(url.pathname))).toBe(false)
+  expect(requests.filter((url) => url.pathname === '/api/v1/plans')).toHaveLength(0)
 })
 
 test('all resource pages resize, fit and expand/restore their detail pane', async ({ page }) => {
@@ -1378,7 +2383,6 @@ test('all resource pages resize, fit and expand/restore their detail pane', asyn
 
   const pages = [
     { hash: '#/projects/1', list: 'Projects', detail: 'Synthetic project' },
-    { hash: '#/plans/55', list: 'Plans', detail: 'Synthetic plan' },
     { hash: '#/documents/73', list: 'Documents', detail: 'Synthetic document' },
     { hash: '#/code/74', list: 'Code artifacts', detail: 'Synthetic code artifact' },
     { hash: '#/files/75', list: 'Files', detail: 'synthetic.png' },
@@ -1406,43 +2410,38 @@ test('all resource pages resize, fit and expand/restore their detail pane', asyn
     await page.mouse.down()
     await page.mouse.move(handleBox.x - 80, handleBox.y + 80, { steps: 8 })
     await page.mouse.up()
-    const afterDrag = await detail.boundingBox()
-    if (!afterDrag) throw new Error(`Missing resized detail for ${item.hash}`)
-    expect(afterDrag.width).toBeGreaterThan(before.width + 40)
+    await expect
+      .poll(async () => (await detail.boundingBox())?.width ?? 0)
+      .toBeGreaterThan(before.width + 40)
 
-    const keyboardBefore = afterDrag.width
-    await handle.focus()
-    await page.keyboard.press('ArrowLeft')
-    const afterLeft = await detail.boundingBox()
-    if (!afterLeft) throw new Error(`Missing keyboard resize for ${item.hash}`)
-    expect(afterLeft.width).toBeGreaterThan(keyboardBefore + 10)
-    await page.keyboard.press('ArrowRight')
-    const afterRight = await detail.boundingBox()
-    if (!afterRight) throw new Error(`Missing keyboard restore for ${item.hash}`)
-    expect(afterRight.width).toBeLessThan(afterLeft.width)
-    await page.keyboard.press('Home')
-    const atMin = await detail.boundingBox()
+    const keyboardBefore = (await detail.boundingBox())?.width ?? 0
+    await handle.press('ArrowLeft')
+    await expect
+      .poll(async () => (await detail.boundingBox())?.width ?? 0)
+      .toBeGreaterThan(keyboardBefore + 10)
+    const afterLeft = (await detail.boundingBox())?.width ?? 0
+    await handle.press('ArrowRight')
+    await expect.poll(async () => (await detail.boundingBox())?.width ?? 0).toBeLessThan(afterLeft)
+
     const minWidth = Number(await handle.getAttribute('aria-valuemin'))
-    if (!atMin) throw new Error(`Missing minimum width for ${item.hash}`)
-    expect(atMin.width).toBeGreaterThanOrEqual(minWidth - 1)
-    expect(atMin.width).toBeLessThanOrEqual(minWidth + 1)
-    await page.keyboard.press('End')
-    const atMax = await detail.boundingBox()
+    await handle.press('Home')
+    await expect.poll(async () => (await detail.boundingBox())?.width ?? 0).toBeCloseTo(minWidth, 0)
+    await expect.poll(async () => Number(await handle.getAttribute('aria-valuenow'))).toBe(minWidth)
     const maxWidth = Number(await handle.getAttribute('aria-valuemax'))
+    await handle.press('End')
+    await expect.poll(async () => (await detail.boundingBox())?.width ?? 0).toBeCloseTo(maxWidth, 0)
+    await expect.poll(async () => Number(await handle.getAttribute('aria-valuenow'))).toBe(maxWidth)
+    const atMax = await detail.boundingBox()
     if (!atMax) throw new Error(`Missing maximum width for ${item.hash}`)
-    expect(atMax.width).toBeLessThanOrEqual(maxWidth + 1)
 
     await page.getByRole('button', { name: 'Expand detail' }).click()
     await expect(page.locator('[data-resource-list]')).toBeHidden()
-    const expanded = await detail.boundingBox()
-    if (!expanded) throw new Error(`Missing expanded detail for ${item.hash}`)
-    expect(expanded.width).toBeGreaterThan(atMax.width)
+    await expect
+      .poll(async () => (await detail.boundingBox())?.width ?? 0)
+      .toBeGreaterThan(atMax.width)
     await page.getByRole('button', { name: 'Restore detail' }).click()
     await expect(page.locator('[data-resource-list]')).toBeVisible()
-    const restored = await detail.boundingBox()
-    if (!restored) throw new Error(`Missing restored detail for ${item.hash}`)
-    expect(restored.width).toBeLessThanOrEqual(maxWidth + 1)
-    expect(Math.abs(restored.width - atMax.width)).toBeLessThanOrEqual(2)
+    await expect.poll(async () => (await detail.boundingBox())?.width ?? 0).toBeCloseTo(maxWidth, 0)
     expect(requests.length).toBe(requestsBefore)
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -1456,12 +2455,12 @@ test('all resource pages resize, fit and expand/restore their detail pane', asyn
     await expect(page.locator('[data-resource-detail] h3').first()).toBeVisible()
     const handle = page.getByRole('separator', { name: 'Resize detail' })
     await expect(handle).toBeVisible()
-    await handle.focus()
-    await page.keyboard.press('End')
-    const detail = await page.locator('[data-resource-detail]').boundingBox()
+    await handle.press('End')
     const maxWidth = Number(await handle.getAttribute('aria-valuemax'))
-    if (!detail) throw new Error(`Missing 1024 detail for ${item.hash}`)
-    expect(detail.width).toBeLessThanOrEqual(maxWidth + 1)
+    await expect
+      .poll(async () => (await page.locator('[data-resource-detail]').boundingBox())?.width ?? 0)
+      .toBeCloseTo(maxWidth, 0)
+    await expect.poll(async () => Number(await handle.getAttribute('aria-valuenow'))).toBe(maxWidth)
     const overflow = await page.evaluate(
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
     )
@@ -1473,11 +2472,6 @@ test('all resource pages resize, fit and expand/restore their detail pane', asyn
     await page.goto(item.hash)
     await expect(page.locator('[data-resource-detail] h3').first()).toBeVisible()
     await expect(page.locator('[data-resize-handle]')).toBeHidden()
-    if (item.hash === '#/plans/55') {
-      await expect(
-        page.locator('[data-resource-detail]').getByText(longProjectName, { exact: true }),
-      ).toBeVisible()
-    }
     const detail = await page.locator('[data-resource-detail]').boundingBox()
     if (!detail) throw new Error(`Missing 390 detail for ${item.hash}`)
     expect(detail.width).toBeLessThanOrEqual(390)
@@ -1486,6 +2480,114 @@ test('all resource pages resize, fit and expand/restore their detail pane', asyn
     )
     expect(overflow).toBeLessThanOrEqual(1)
   }
+
+  await page.setViewportSize({ width: 1440, height: 1000 })
+  await page.goto('/#/plans/55?task=66')
+  const taskDetail = page.locator('[data-task-detail]')
+  await expect(taskDetail.locator('h3')).toHaveText('Synthetic task')
+  const taskDetailId = await taskDetail.getAttribute('id')
+  const taskHandle = page.getByRole('separator', { name: 'Resize task details' })
+  await expect(taskHandle).toBeVisible()
+  expect(await taskHandle.getAttribute('aria-controls')).toBe(taskDetailId)
+  expect(Number(await taskHandle.getAttribute('aria-valuenow'))).toBeGreaterThan(0)
+  expect(Number(await taskHandle.getAttribute('aria-valuemax'))).toBeGreaterThan(
+    Number(await taskHandle.getAttribute('aria-valuemin')),
+  )
+  const taskRequestsBefore = requests.length
+  const taskBefore = await taskDetail.boundingBox()
+  const taskHandleBox = await taskHandle.boundingBox()
+  if (!taskBefore || !taskHandleBox) throw new Error('Missing task detail geometry')
+  await page.mouse.move(taskHandleBox.x + taskHandleBox.width / 2, taskHandleBox.y + 80)
+  await page.mouse.down()
+  await page.mouse.move(taskHandleBox.x - 80, taskHandleBox.y + 80, { steps: 8 })
+  await page.mouse.up()
+  await expect
+    .poll(async () => (await taskDetail.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(taskBefore.width + 40)
+
+  const taskKeyboardBefore = (await taskDetail.boundingBox())?.width ?? 0
+  await taskHandle.press('ArrowLeft')
+  await expect
+    .poll(async () => (await taskDetail.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(taskKeyboardBefore + 10)
+  const taskAfterLeft = (await taskDetail.boundingBox())?.width ?? 0
+  await taskHandle.press('ArrowRight')
+  await expect
+    .poll(async () => (await taskDetail.boundingBox())?.width ?? 0)
+    .toBeLessThan(taskAfterLeft)
+  await expect
+    .poll(async () => {
+      const width = (await taskDetail.boundingBox())?.width ?? 0
+      const now = Number(await taskHandle.getAttribute('aria-valuenow'))
+      return Math.abs(width - now)
+    })
+    .toBeLessThanOrEqual(1)
+
+  const taskMinWidth = Number(await taskHandle.getAttribute('aria-valuemin'))
+  await taskHandle.press('Home')
+  await expect
+    .poll(async () => (await taskDetail.boundingBox())?.width ?? 0)
+    .toBeCloseTo(taskMinWidth, 0)
+  await expect
+    .poll(async () => Number(await taskHandle.getAttribute('aria-valuenow')))
+    .toBe(taskMinWidth)
+  const taskMaxWidth = Number(await taskHandle.getAttribute('aria-valuemax'))
+  await taskHandle.press('End')
+  await expect
+    .poll(async () => (await taskDetail.boundingBox())?.width ?? 0)
+    .toBeCloseTo(taskMaxWidth, 0)
+  await expect
+    .poll(async () => Number(await taskHandle.getAttribute('aria-valuenow')))
+    .toBe(taskMaxWidth)
+  const taskAtMax = await taskDetail.boundingBox()
+  if (!taskAtMax) throw new Error('Missing maximum task detail width')
+
+  await page.getByRole('button', { name: 'Expand task details' }).click()
+  await expect(page.locator('[data-plan-board]')).toBeHidden()
+  await expect
+    .poll(async () => (await taskDetail.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(taskAtMax.width)
+  await page.getByRole('button', { name: 'Restore task details' }).click()
+  await expect(page.locator('[data-plan-board]')).toBeVisible()
+  await expect
+    .poll(async () => (await taskDetail.boundingBox())?.width ?? 0)
+    .toBeCloseTo(taskMaxWidth, 0)
+  expect(requests.length).toBe(taskRequestsBefore)
+
+  await page.setViewportSize({ width: 1024, height: 900 })
+  await page.goto('/#/plans/55?task=66')
+  await expect(taskDetail.locator('h3')).toHaveText('Synthetic task')
+  await expect(taskHandle).toBeVisible()
+  await taskHandle.press('End')
+  const taskMaxAt1024 = Number(await taskHandle.getAttribute('aria-valuemax'))
+  await expect
+    .poll(async () => (await taskDetail.boundingBox())?.width ?? 0)
+    .toBeCloseTo(taskMaxAt1024, 0)
+  await expect
+    .poll(async () => Number(await taskHandle.getAttribute('aria-valuenow')))
+    .toBe(taskMaxAt1024)
+  let taskOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+  expect(taskOverflow).toBeLessThanOrEqual(1)
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/#/plans/55?task=66')
+  await expect(taskDetail.locator('h3')).toHaveText('Synthetic task')
+  await expect(taskHandle).toBeHidden()
+  await expect(taskDetail.getByRole('link', { name: 'Back to board' })).toBeVisible()
+  await expect(
+    page.locator('[data-plan-header]').getByText(longProjectName, { exact: true }),
+  ).toBeVisible()
+  const taskMobile = await taskDetail.boundingBox()
+  if (!taskMobile) throw new Error('Missing 390 task detail')
+  expect(taskMobile.width).toBeLessThanOrEqual(390)
+  taskOverflow = await page.evaluate(
+    () => document.documentElement.scrollWidth - document.documentElement.clientWidth,
+  )
+  expect(taskOverflow).toBeLessThanOrEqual(1)
+  await taskDetail.getByRole('link', { name: 'Back to board' }).click()
+  await expect(page.locator('[data-task-id="66"]')).toBeFocused()
 })
 
 test('timeline displays and filters all five stored action types', async ({ page }) => {
@@ -1556,7 +2658,7 @@ test('timeline displays and filters all five stored action types', async ({ page
   }
 })
 
-test('plans keep distinct project names across selection changes and delayed lookup', async ({
+test('plan board keeps distinct project names across deep links and delayed lookup', async ({
   page,
 }) => {
   const alpha = { ...syntheticProject, id: 1, name: 'Alpha project name' }
@@ -1584,21 +2686,15 @@ test('plans keep distinct project names across selection changes and delayed loo
   })
 
   await page.goto('/#/plans/55')
-  await expect(page.getByRole('heading', { name: 'First named plan' })).toBeVisible()
-  const detail = page.locator('[data-resource-detail]')
-  await expect(detail.getByText('Project #1', { exact: true })).toBeVisible()
+  const header = page.locator('[data-plan-header]')
+  await expect(header.getByRole('heading', { name: 'First named plan' })).toBeVisible()
+  await expect(header.getByText('Project #1', { exact: true })).toBeVisible()
   releaseProjects?.()
-  await expect(detail.getByText('Alpha project name', { exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: /First named plan/ })).toContainText(
-    'Alpha project name',
-  )
+  await expect(header.getByRole('link', { name: 'Alpha project name', exact: true })).toBeVisible()
 
-  await page.getByRole('link', { name: /Second named plan/ }).click()
-  await expect(page.getByRole('heading', { name: 'Second named plan' })).toBeVisible()
-  await expect(detail.getByText('Beta project name', { exact: true })).toBeVisible()
-  await expect(page.getByRole('link', { name: /Second named plan/ })).toContainText(
-    'Beta project name',
-  )
+  await page.goto('/#/plans/56')
+  await expect(header.getByRole('heading', { name: 'Second named plan' })).toBeVisible()
+  await expect(header.getByRole('link', { name: 'Beta project name', exact: true })).toBeVisible()
 })
 
 test('plan content survives project lookup failure and names recover on retry', async ({
@@ -1623,16 +2719,16 @@ test('plan content survives project lookup failure and names recover on retry', 
   })
 
   await page.goto('/#/plans/55')
-  await expect(page.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
-  const detail = page.locator('[data-resource-detail]')
-  await expect(detail.getByText('Project #1', { exact: true })).toBeVisible()
-  await expect(page.getByText('Synthetic plan goal.')).toBeVisible()
+  const header = page.locator('[data-plan-header]')
+  await expect(header.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
+  await expect(header.getByText('Project #1', { exact: true })).toBeVisible()
+  await expect(header.getByText('Synthetic plan goal.')).toBeVisible()
   await expect(page.getByText('Project options unavailable')).toBeVisible()
 
   projectsAvailable = true
   await page.getByRole('button', { name: 'Retry project options' }).click()
-  await expect(detail.getByText('Synthetic project', { exact: true })).toBeVisible()
-  await expect(page.getByText('Synthetic plan goal.')).toBeVisible()
+  await expect(header.getByRole('link', { name: 'Synthetic project', exact: true })).toBeVisible()
+  await expect(header.getByText('Synthetic plan goal.')).toBeVisible()
 })
 
 test('clearing a resource selection restores the list from expanded detail', async ({ page }) => {
@@ -1647,7 +2743,7 @@ test('clearing a resource selection restores the list from expanded detail', asy
   await expect(page.getByRole('button', { name: 'Expand detail' })).toHaveCount(0)
 })
 
-test('long unbroken project names wrap inside narrow resource detail panes', async ({ page }) => {
+test('long unbroken project names wrap in resource details and plan headers', async ({ page }) => {
   const projectName = `Synthetic${'P'.repeat(171)}`
   const project = { ...syntheticProject, name: projectName }
   await installBaseApi(page, {
@@ -1663,24 +2759,29 @@ test('long unbroken project names wrap inside narrow resource detail panes', asy
   })
 
   const targets = [
-    { hash: '#/plans/55', role: 'link' as const },
-    { hash: '#/projects/1', role: 'heading' as const },
+    { hash: '#/plans/55', role: 'link' as const, container: '[data-plan-header]' },
+    { hash: '#/projects/1', role: 'heading' as const, container: '[data-resource-detail]' },
   ]
 
   for (const width of [1440, 390]) {
     await page.setViewportSize({ width, height: 1000 })
     for (const target of targets) {
       await page.goto(target.hash)
-      const detail = page.locator('[data-resource-detail]')
-      const name = detail.getByRole(target.role, { name: projectName, exact: true })
+      const scope = page.locator(target.container)
+      const name = scope.getByRole(target.role, { name: projectName, exact: true })
       await expect(name).toBeVisible()
-      if (width === 1440) {
+      if (width === 1440 && target.container === '[data-resource-detail]') {
         const handle = page.getByRole('separator', { name: 'Resize detail' })
-        await handle.focus()
-        await page.keyboard.press('Home')
+        await handle.press('Home')
+        const minWidth = Number(await handle.getAttribute('aria-valuemin'))
+        await expect
+          .poll(
+            async () => (await page.locator('[data-resource-detail]').boundingBox())?.width ?? 0,
+          )
+          .toBeCloseTo(minWidth, 0)
       }
-      const metrics = await name.evaluate((element) => {
-        const panel = element.closest('[data-resource-detail]')
+      const metrics = await name.evaluate((element, selector) => {
+        const panel = element.closest(selector)
         if (!panel) throw new Error('Detail panel missing')
         const panelBox = panel.getBoundingClientRect()
         const range = document.createRange()
@@ -1692,7 +2793,7 @@ test('long unbroken project names wrap inside narrow resource detail panes', asy
           ),
           lines: rectangles.length,
         }
-      })
+      }, target.container)
       expect(metrics.fits).toBe(true)
       expect(metrics.lines).toBeGreaterThan(1)
       const overflow = await page.evaluate(

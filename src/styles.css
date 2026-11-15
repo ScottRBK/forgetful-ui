@@ -500,6 +500,72 @@ body {
 }
 
 @layer components {
+  .plan-board-header {
+    overflow-wrap: anywhere;
+  }
+
+  .plan-board-title {
+    overflow-wrap: anywhere;
+  }
+
+  .plan-board-layout {
+    min-width: 0;
+  }
+
+  .plan-board-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+
+  .plan-board-columns {
+    display: flex;
+    width: max-content;
+    min-width: 100%;
+    align-items: flex-start;
+    gap: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .plan-board-column {
+    width: 210px;
+    flex: 0 0 210px;
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .task-card-title {
+    overflow-wrap: anywhere;
+  }
+
+  @media (min-width: 1024px) {
+    .plan-board-layout.has-task {
+      display: grid;
+      grid-template-columns: minmax(360px, 1fr) 9px minmax(300px, var(--detail-width, 400px));
+      align-items: start;
+      gap: 1rem;
+    }
+
+    .plan-board-layout.is-expanded {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .plan-board-layout.is-expanded .plan-board-area,
+    .plan-board-layout.is-expanded .detail-resize-handle {
+      display: none;
+    }
+  }
+
+  @media (max-width: 1023px) {
+    .plan-board-layout.has-task .plan-board-area {
+      display: none;
+    }
+
+    .plan-board-layout:not(.has-task) .task-detail {
+      display: none;
+    }
+  }
+
   .resource-layout {
     display: grid;
     min-width: 0;

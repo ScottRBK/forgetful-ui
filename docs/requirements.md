@@ -1,7 +1,7 @@
 # Forgetful UI prototype requirements
 
-Status: The read-only pages below are implemented. Login and Sessions remain deferred.
-Use npm and the test tools listed under Validation.
+Status: The read-only pages are implemented, including the Plan Kanban board. Login and Sessions
+remain deferred. Use npm and the test tools listed under Validation.
 
 ## Agreed decisions
 
@@ -76,9 +76,8 @@ Build these pages in the existing visual style, one working and tested slice at 
   totals where available. Do not fetch every resource list just to populate count cards.
 - Projects: summaries, supported status/repository filters, and full project details. Link to the
   project's Memories view.
-- Plans: summaries with supported project/status filters, plan details, and tasks within the
-  selected plan. Show task details, state, priority, criteria, and dependencies without edit
-  controls.
+- Plans: summaries with supported project/status filters. Selecting a plan opens its full-page
+  Kanban board, with task details available on selection. See the approved board scope below.
 - Documents: summaries, supported project/type filters, and full document content on selection.
 - Code: summaries, supported project/language filters, and readable source on selection.
 - Files: summaries, supported project/MIME-type filters, and selected-file metadata. Do not execute
@@ -94,6 +93,32 @@ Optional content formatting does not justify adding dependencies without an audi
 Login is deferred. Sessions waits for backend support. Hide unfinished pages from navigation.
 Do not display invented live data or controls that appear to work but do nothing. Existing Memories
 and Graph behaviour must remain intact; graph visual changes are outside this delivery.
+
+### Plan Kanban board
+
+- Selecting a plan replaces the Plans list with a full-page board for that plan.
+- Keep the existing plan and task hash links. Back to plans restores the list's project/status
+  filters. Direct links, reload, and browser Back/Forward must work.
+- Show the plan name, actual owning project name, status, and goal above the board. Retain access
+  to the plan's context and metadata rather than dropping existing details.
+- Use the existing task states, in order: To do, Doing, Waiting, Done, Cancelled. Keep empty
+  columns visible. A blocked task keeps its state and gets a separate badge.
+- Cards show title, priority, assigned agent, and acceptance-criteria progress from task summaries.
+  Load full task details only when selected. Do not fetch every task's full content.
+- Selecting a card opens a resizable right-hand detail panel with Expand/Restore. On narrow
+  screens, show full-width task details with Back to board and restore focus to the selected card.
+- Show the task description, acceptance criteria, dependencies, and existing metadata. Reject a
+  task detail response that belongs to another plan.
+- Add a manual Refresh control for the current plan, task summaries, and any selected task detail.
+  Keep the current board, selected pane, focus, and board scroll visible while the refresh is
+  pending, and label the displayed data as previous. Show failures clearly, allow retries, and
+  prevent older responses from replacing newer data. Do not add automatic polling or live
+  subscriptions.
+- Keep all operations read-only. Do not add card dragging, state changes, edits, or create controls.
+- Keep horizontal scrolling inside the board on small screens, not on the whole page. Long names
+  and task text must remain readable inside their panels.
+- Preserve optional-feature and access-denial handling. No backend changes or new dependencies
+  are needed for this board.
 
 ### Prototype-only list exception
 
@@ -143,13 +168,14 @@ and its assets; it does not need a separate route for each screen.
 
 ## Data loading and screen behaviour
 
-- Give Projects, Plans, Documents, Code, Files, and Skills the same wide-screen detail controls
-  as Memories: pointer and keyboard resizing, bounded widths, and Expand/Restore. Restore the
-  previous width, keep narrow-screen selection/back behaviour, and make no requests during resizing.
-  Dashboard and Timeline do not need a new side panel. Keep Graph unchanged for this iteration.
-- Show the actual project name in the Plans list and selected-plan detail, using the plan's
-  project ID rather than the current filter. Reuse the project summary data needed for the filter;
-  do not fetch every project's full detail. Keep an explicit ID fallback if a name is unavailable.
+- Give Projects, Documents, Code, Files, Skills, and the Plan board's selected-task panel the same
+  wide-screen detail controls as Memories: pointer and keyboard resizing, bounded widths, and
+  Expand/Restore. Restore the previous width, keep narrow-screen selection/back behaviour, and
+  make no requests during resizing. Dashboard and Timeline do not need a new side panel.
+  Keep Graph unchanged for this iteration.
+- Show the actual project name in the Plans list and board header, using the plan's project ID
+  rather than the current filter. Reuse the project summary data needed for the filter; do not
+  fetch every project's full detail. Keep an explicit ID fallback if a name is unavailable.
 - Timeline shows stored events, not a reconstructed history. Support all API action types without
   inventing missing events or enabling server-side collection as part of this UI work.
 - Mount a screen and start its requests when the user opens it.
@@ -219,3 +245,4 @@ Future voice support and production packaging need no implementation in this moc
 - [x] Build Dashboard, Projects, Plans, Documents, Code, Files, Skills, and Timeline as
   read-only pages.
 - [x] Allow existing unpaginated summary lists for this prototype only, tracked by issue #215.
+- [x] Open each plan as a read-only Kanban board with selected-task details and manual refresh.

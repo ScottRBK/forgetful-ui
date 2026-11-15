@@ -451,37 +451,39 @@ test('resizes, expands and restores the selected memory detail on wide screens',
     listRequestsBefore,
   )
 
-  await handle.focus()
   const keyboardBefore = afterDrag.width
-  await page.keyboard.press('ArrowLeft')
-  const afterKey = await detail.boundingBox()
-  if (!afterKey) throw new Error('Detail has no box after key')
-  expect(afterKey.width).toBeGreaterThan(keyboardBefore + 10)
+  await handle.press('ArrowLeft')
+  await expect
+    .poll(async () => (await detail.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(keyboardBefore + 10)
 
   const handleBox2 = await handle.boundingBox()
   if (!handleBox2) throw new Error('Handle has no box after key')
   await page.mouse.move(handleBox2.x + handleBox2.width / 2, handleBox2.y + handleBox2.height / 2)
   await page.mouse.down()
-  await page.mouse.move(handleBox2.x - 2000, handleBox2.y + handleBox2.height / 2, { steps: 8 })
+  await page.mouse.move(handleBox2.x - 500, handleBox2.y + handleBox2.height / 2, { steps: 8 })
   await page.mouse.up()
-  const atMax = await detail.boundingBox()
   const maxWidth = Number(await handle.getAttribute('aria-valuemax'))
-  if (!atMax) throw new Error('Detail has no box at max')
-  expect(atMax.width).toBeLessThanOrEqual(maxWidth + 1)
+  await expect.poll(async () => (await detail.boundingBox())?.width ?? 0).toBeCloseTo(maxWidth, 0)
+  await expect.poll(async () => Number(await handle.getAttribute('aria-valuenow'))).toBe(maxWidth)
 
   const minWidth = Number(await handle.getAttribute('aria-valuemin'))
-  await handle.focus()
-  await page.keyboard.press('Home')
+  await handle.press('Home')
+  await expect
+    .poll(async () => (await detail.boundingBox())?.width ?? 0)
+    .toBeGreaterThanOrEqual(minWidth - 1)
+  await expect
+    .poll(async () => (await detail.boundingBox())?.width ?? 0)
+    .toBeLessThanOrEqual(minWidth + 1)
+  await expect.poll(async () => Number(await handle.getAttribute('aria-valuenow'))).toBe(minWidth)
   const atMin = await detail.boundingBox()
   if (!atMin) throw new Error('Detail has no box at min')
-  expect(atMin.width).toBeGreaterThanOrEqual(minWidth - 1)
   expect(atMin.width).toBeLessThanOrEqual(minWidth + 1)
 
   const endMax = Number(await handle.getAttribute('aria-valuemax'))
-  await page.keyboard.press('End')
-  const atEnd = await detail.boundingBox()
-  if (!atEnd) throw new Error('Detail has no box at End')
-  expect(atEnd.width).toBeLessThanOrEqual(endMax + 1)
+  await handle.press('End')
+  await expect.poll(async () => (await detail.boundingBox())?.width ?? 0).toBeCloseTo(endMax, 0)
+  await expect.poll(async () => Number(await handle.getAttribute('aria-valuenow'))).toBe(endMax)
 
   await page.setViewportSize({ width: 1100, height: 900 })
   await page.waitForTimeout(200)

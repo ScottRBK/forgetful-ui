@@ -9,7 +9,8 @@ The mock-up includes:
 - **Dashboard**: connection, feature status, bounded recent memories and activity.
 - **Memories**: paginated list, filters, full memory detail, resize/expand.
 - **Graph**: a bounded neighbourhood around the selected memory.
-- **Projects**, **Plans** (with plan-scoped tasks), **Documents**, **Code**, **Files**, **Skills**.
+- **Projects**, **Plans** (a full-page Kanban board for each plan), **Documents**, **Code**,
+  **Files**, **Skills**.
 - **Timeline**: server-paginated stored activity history.
 
 There are no write controls, no login flow, and no session screen. Login and Sessions stay hidden.
@@ -70,6 +71,7 @@ The app uses hash routing:
 - `#/memories/<id>?page=<n>&project=<id>&sort=...&order=...&importance=...`
 - `#/graph?memory=<id>&depth=<1-3>`
 - `#/projects/<id>?status=...&repo=...`
+- `#/plans?project=...&status=...`
 - `#/plans/<planId>?task=<taskId>&project=...&status=...`
 - `#/documents/<id>?project=...&type=...`
 - `#/code/<id>?project=...&language=...`
@@ -102,18 +104,30 @@ use the unprefixed `/api/v1` path.
   date filtering wait for backend support. Tag and obsolete filters are not exposed in this
   iteration; the UI does not fake unsupported controls.
 - A project is selected from the separate project list. The project endpoint is not paginated.
-- Memories, Projects, Plans, Documents, Code, Files, and Skills have resizable wide-screen detail
-  panes with pointer or keyboard control (Arrow keys, Home/End), bounded widths, and Expand/Restore.
+- Memories, Projects, Documents, Code, Files, and Skills have resizable wide-screen detail panes
+  with pointer or keyboard control (Arrow keys, Home/End), bounded widths, and Expand/Restore.
   Narrow screens keep a full-width detail view with Back to list; resizing makes no API requests.
+  The selected task panel on a Plan board has the same resize controls, with Back to board.
 - Projects, Plans, Documents, Code, Files, and Skills use the existing summary-list responses
-  without limit/offset. This is a prototype-only exception tracked by
-  [Forgetful issue #215](https://github.com/ScottRBK/forgetful/issues/215). They are not presented
-  as server-paginated lists, and full content is fetched only after selection.
-- Plans show the selected plan's own project name from the project summary used by the filter,
-  with an explicit ID fallback if that lookup is loading or unavailable. This is independent of
-  the project filter. Tasks are fetched only for the selected plan. Task detail includes state,
-  priority, criteria, dependencies, and optional description. No task transitions or edits are
-  offered; a task belonging to another plan is rejected rather than shown as a child.
+  without limit/offset. The Plan board's task summaries use the same prototype exception. These
+  responses are tracked by [Forgetful issue #215](https://github.com/ScottRBK/forgetful/issues/215).
+  They are not presented as server-paginated lists, and full content is fetched only after
+  selection.
+- Selecting a plan replaces the Plans list with a read-only Kanban board. Its columns are To do,
+  Doing, Waiting, Done, and Cancelled, including empty columns. A blocked task keeps its state and
+  gets a badge. Cards use task summaries only, so task detail is not downloaded until a card is
+  selected. There is no dragging, editing, creation, or state change.
+- The board header shows the plan title, status, goal, and its own project name from the project
+  summary. The ID is shown as a fallback when that lookup is loading or unavailable. Direct plan
+  links do not load the full Plans list, and the app does not fetch each project's full detail.
+  Plan filters are restored by Back to plans.
+- A selected task opens a resizable detail panel with description, acceptance criteria,
+  dependencies, and metadata. A task belonging to another plan is rejected rather than shown as
+  a child. Manual Refresh updates the plan, task summaries, and the selected task; there is no
+  polling. While refreshing, the current board and selected pane stay visible with a refreshing
+  label and previous data. Failures keep that view with an explicit error and retry. Focus, board
+  scroll, and pane width are preserved. The panel uses the same stale-response and back/forward
+  protections as other detail pages.
 - Files and Skills are optional. Capability discovery is read once per relevant screen. Explicitly
   disabled features show an unavailable state and make no resource requests. Failed or malformed
   discovery means unknown, not disabled; unknown allows a careful read-only attempt and retry.
