@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.env
+.env.*
+!.env.example
+.playwright-cli/
+test-results/
+playwright-report/
+blob-report/
+coverage/
+.DS_Store

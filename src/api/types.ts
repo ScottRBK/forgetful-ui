@@ -1,0 +1,289 @@
+export interface MemoryRecord {
+  id: number
+  title: string
+  content: string
+  context?: string | null
+  keywords?: string[]
+  tags?: string[]
+  importance: number
+  created_at: string
+  updated_at: string
+  project_ids?: number[]
+  linked_memory_ids?: number[]
+  code_artifact_ids?: number[]
+  document_ids?: number[]
+  file_ids?: number[]
+  skill_ids?: number[]
+  source_repo?: string | null
+  source_files?: string[] | null
+  source_url?: string | null
+  confidence?: number | null
+  encoding_agent?: string | null
+  encoding_version?: string | null
+  is_obsolete?: boolean
+  obsolete_reason?: string | null
+  superseded_by?: number | null
+  obsoleted_at?: string | null
+  access_count?: number
+  last_accessed_at?: string | null
+}
+
+export interface MemoryListResponse {
+  memories: MemoryRecord[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface ProjectRecord {
+  id: number
+  name: string
+  project_type?: string | null
+  status?: string | null
+  repo_name?: string | null
+  memory_count?: number
+}
+
+export interface ProjectListResponse {
+  projects: ProjectRecord[]
+  total: number
+}
+
+export interface HealthResponse {
+  status?: string
+  service?: string
+  version?: string
+}
+
+export interface AuthInfoResponse {
+  authEnabled?: boolean
+  authMode?: string | null
+}
+
+export type GraphNodeType =
+  | 'memory'
+  | 'entity'
+  | 'project'
+  | 'document'
+  | 'code_artifact'
+  | 'file'
+  | 'skill'
+  | 'plan'
+  | 'task'
+
+export interface SubgraphNode {
+  id: string
+  type: GraphNodeType
+  label: string
+  depth: number
+  data: Record<string, unknown>
+}
+
+export interface SubgraphEdge {
+  id: string
+  source: string
+  target: string
+  type: string
+  data?: Record<string, unknown> | null
+}
+
+export interface SubgraphMeta {
+  center_node_id: string
+  depth: number
+  node_types: string[]
+  max_nodes: number
+  edge_count: number
+  truncated: boolean
+  [key: string]: unknown
+}
+
+export interface SubgraphResponse {
+  nodes: SubgraphNode[]
+  edges: SubgraphEdge[]
+  meta: SubgraphMeta
+}
+
+export type NodeDetail = Record<string, unknown>
+
+export interface CapabilitySet {
+  schemaVersion: number
+  planning: boolean | null
+  skills: boolean | null
+  files: boolean | null
+  activityStream: boolean | null
+}
+
+export interface ProjectRecord {
+  id: number
+  name: string
+  description?: string | null
+  notes?: string | null
+  project_type?: string | null
+  status?: string | null
+  repo_name?: string | null
+  last_encoding_point?: string | null
+  memory_count?: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface PlanRecord {
+  id: number
+  title: string
+  project_id: number
+  goal?: string | null
+  context?: string | null
+  status?: string | null
+  external_ref?: string | null
+  task_count?: number
+  created_at?: string
+  updated_at?: string
+}
+
+export interface TaskCriterion {
+  id: number
+  task_id: number
+  description: string
+  met: boolean
+  met_at?: string | null
+}
+
+export interface TaskSummaryRecord {
+  id: number
+  plan_id: number
+  title: string
+  state?: string | null
+  priority?: string | null
+  assigned_agent?: string | null
+  version?: number
+  criteria_met?: number
+  criteria_total?: number
+  blocked?: boolean
+  created_at?: string
+  updated_at?: string
+}
+
+export interface TaskDetailRecord {
+  id: number
+  plan_id: number
+  title: string
+  description?: string | null
+  state?: string | null
+  priority?: string | null
+  assigned_agent?: string | null
+  version?: number
+  criteria?: TaskCriterion[]
+  dependency_ids?: number[]
+  created_at?: string
+  updated_at?: string
+}
+
+export interface DocumentRecord {
+  id: number
+  title: string
+  description?: string | null
+  content?: string | null
+  document_type?: string | null
+  filename?: string | null
+  size_bytes?: number | null
+  tags?: string[]
+  project_id?: number | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface CodeArtifactRecord {
+  id: number
+  title: string
+  description?: string | null
+  code?: string | null
+  language?: string | null
+  tags?: string[]
+  project_id?: number | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface FileRecord {
+  id: number
+  filename: string
+  description?: string | null
+  mime_type?: string | null
+  size_bytes?: number | null
+  tags?: string[]
+  project_id?: number | null
+  data?: string
+  created_at?: string
+  updated_at?: string
+}
+
+export interface SkillRecord {
+  id: number
+  name: string
+  description?: string | null
+  content?: string | null
+  license?: string | null
+  compatibility?: string | null
+  allowed_tools?: string[] | null
+  metadata?: Record<string, unknown> | null
+  tags?: string[]
+  importance?: number
+  project_id?: number | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface SkillLinks {
+  memory_ids?: number[]
+  file_ids?: number[]
+  code_artifact_ids?: number[]
+  document_ids?: number[]
+}
+
+export interface ActivityEventRecord {
+  id: number
+  entity_type: string
+  entity_id: number
+  action: string
+  changes?: Record<string, unknown> | null
+  snapshot?: Record<string, unknown> | null
+  actor?: string | null
+  actor_id?: string | null
+  metadata?: Record<string, unknown> | null
+  created_at?: string
+}
+
+export interface ProjectListResponse {
+  projects: ProjectRecord[]
+  total: number
+}
+export interface PlanListResponse {
+  plans: PlanRecord[]
+  total: number
+}
+export interface TaskListResponse {
+  tasks: TaskSummaryRecord[]
+  total: number
+}
+export interface DocumentListResponse {
+  documents: DocumentRecord[]
+  total: number
+}
+export interface CodeArtifactListResponse {
+  code_artifacts: CodeArtifactRecord[]
+  total: number
+}
+export interface FileListResponse {
+  files: FileRecord[]
+  total: number
+}
+export interface SkillListResponse {
+  skills: SkillRecord[]
+  total: number
+}
+export interface ActivityListResponse {
+  events: ActivityEventRecord[]
+  total: number
+  limit: number
+  offset: number
+}
