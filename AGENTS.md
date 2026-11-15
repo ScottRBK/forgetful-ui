@@ -4,8 +4,8 @@ standard in terms of quality and functionality.
 For now security is not in scope, although once we transition the product to the main repo we will
 certainly bring it into scope
 
-We will use the forgetful rest api for the running forgetful instance that can be located at
-127.0.0.1:8022, we will have an environment file that allows us to configure where we point
+For now we just point to a local instance of forgetful that does not have auth enabled, we will 
+have an environment file that allows us to configure where we point
 this to however
 
 - React + Typescript with Typescript strict mode enabled
