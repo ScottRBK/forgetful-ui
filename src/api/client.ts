@@ -9,6 +9,7 @@ import type {
   FileListResponse,
   FileRecord,
   GraphNodeType,
+  GraphOverviewResponse,
   HealthResponse,
   MemoryListResponse,
   MemoryRecord,
@@ -122,6 +123,28 @@ export function listMemories(
 
 export function getMemory(memoryId: number, signal?: AbortSignal): Promise<MemoryRecord> {
   return getJson<MemoryRecord>(`${apiRoot()}/memories/${memoryId}`, signal)
+}
+
+export function getGraphOverview(
+  params: {
+    nodeTypes: GraphNodeType[]
+    projectId: number | null
+    limit: number
+    offset: number
+  },
+  signal?: AbortSignal,
+): Promise<GraphOverviewResponse> {
+  return getJson<GraphOverviewResponse>(
+    queryPath(`${apiRoot()}/graph`, {
+      node_types: params.nodeTypes.join(','),
+      project_id: params.projectId,
+      limit: params.limit,
+      offset: params.offset,
+      sort_by: 'created_at',
+      sort_order: 'asc',
+    }),
+    signal,
+  )
 }
 
 export function getSubgraph(

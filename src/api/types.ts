@@ -71,12 +71,16 @@ export type GraphNodeType =
   | 'plan'
   | 'task'
 
-export interface SubgraphNode {
+export interface GraphNodeRecord {
   id: string
   type: GraphNodeType
   label: string
-  depth: number
   data: Record<string, unknown>
+  depth?: number
+}
+
+export interface SubgraphNode extends GraphNodeRecord {
+  depth: number
 }
 
 export interface SubgraphEdge {
@@ -101,6 +105,30 @@ export interface SubgraphResponse {
   nodes: SubgraphNode[]
   edges: SubgraphEdge[]
   meta: SubgraphMeta
+}
+
+export interface GraphOverviewMeta {
+  memory_count: number
+  total_memory_count: number
+  offset: number
+  limit: number
+  has_more: boolean
+  entity_count: number
+  project_count: number
+  document_count: number
+  code_artifact_count: number
+  file_count: number
+  skill_count: number
+  plan_count: number
+  task_count: number
+  edge_count: number
+  [key: string]: unknown
+}
+
+export interface GraphOverviewResponse {
+  nodes: GraphNodeRecord[]
+  edges: SubgraphEdge[]
+  meta: GraphOverviewMeta
 }
 
 export type NodeDetail = Record<string, unknown>

@@ -40,6 +40,40 @@ test('reads the available remaining pages without mutations', async ({ page }) =
   test.skip(!enabled, 'Set LIVE=1 to run against the local Forgetful instance')
   const mutations: string[] = []
   const requests: URL[] = []
+  const graphMetas: {
+    memory_count: number
+    total_memory_count: number
+    offset: number
+    limit: number
+    has_more: boolean
+  }[] = []
+  page.on('response', (response) => {
+    const url = new URL(response.url())
+    if (url.pathname !== '/api/v1/graph') return
+    response
+      .json()
+      .then((body: unknown) => {
+        const meta = (body as { meta?: unknown }).meta
+        if (!meta || typeof meta !== 'object') return
+        const value = meta as Record<string, unknown>
+        if (
+          typeof value.memory_count === 'number' &&
+          typeof value.total_memory_count === 'number' &&
+          typeof value.offset === 'number' &&
+          typeof value.limit === 'number' &&
+          typeof value.has_more === 'boolean'
+        ) {
+          graphMetas.push({
+            memory_count: value.memory_count,
+            total_memory_count: value.total_memory_count,
+            offset: value.offset,
+            limit: value.limit,
+            has_more: value.has_more,
+          })
+        }
+      })
+      .catch(() => undefined)
+  })
   page.on('request', (request) => {
     const method = request.method()
     if (method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS') {
@@ -71,6 +105,55 @@ test('reads the available remaining pages without mutations', async ({ page }) =
       .getByRole('list')
       .or(recentActivitySection.getByText('No activity history', { exact: true })),
   ).toBeVisible({ timeout: 15_000 })
+  await expect(page.getByRole('alert')).toHaveCount(0)
+
+  const graphRequestStart = requests.length
+  await page.goto('/#/graph')
+  await expect(page.getByRole('heading', { name: 'Graph overview' })).toBeVisible({
+    timeout: 15_000,
+  })
+  await expect(
+    page.getByText(
+      'Some connections between memories may be missing until Forgetful #221 is fixed.',
+    ),
+  ).toBeVisible()
+  await expect(
+    page.locator('canvas').or(page.getByText('No graph records', { exact: true })),
+  ).toBeVisible({ timeout: 45_000 })
+  await expect(page.getByText(/\d+ (memory|memories) · \d+ (project|projects) · /)).toBeVisible()
+  await expect.poll(() => graphMetas.length).toBeGreaterThan(0)
+  const firstMeta = graphMetas[0]
+  if (!firstMeta) throw new Error('Graph metadata was not returned')
+  const expectedPages =
+    firstMeta.total_memory_count === 0
+      ? 1
+      : Math.ceil(firstMeta.total_memory_count / firstMeta.limit)
+  await expect.poll(() => graphMetas.length).toBe(expectedPages)
+  expect(graphMetas.at(-1)?.has_more).toBe(false)
+  for (let index = 0; index < graphMetas.length; index += 1) {
+    const meta = graphMetas[index]
+    if (!meta) continue
+    if (index === 0) expect(meta.offset).toBe(0)
+    else
+      expect(meta.offset).toBe(
+        (graphMetas[index - 1]?.offset ?? -1) + (graphMetas[index - 1]?.memory_count ?? 0),
+      )
+  }
+  const graphRequests = requests
+    .slice(graphRequestStart)
+    .filter((url) => url.pathname === '/api/v1/graph')
+  expect(graphRequests).toHaveLength(graphMetas.length)
+  expect(
+    graphRequests.every((url) => url.searchParams.get('node_types') === 'memory,project'),
+  ).toBe(true)
+  expect(
+    requests
+      .slice(graphRequestStart)
+      .some(
+        (url) =>
+          url.pathname === '/api/v1/memories' || url.pathname.startsWith('/api/v1/memories/'),
+      ),
+  ).toBe(false)
   await expect(page.getByRole('alert')).toHaveCount(0)
 
   await page.goto('/#/projects')

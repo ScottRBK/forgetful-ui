@@ -160,24 +160,12 @@ export default function App() {
     route.kind === 'dashboard' ||
     route.kind === 'plans' ||
     route.kind === 'files' ||
-    route.kind === 'skills'
+    route.kind === 'skills' ||
+    route.kind === 'graph'
   const capabilityConnection =
     connection.status !== 'auth-required' && connection.status !== 'access-blocked'
   const capabilities = useCapabilities(capabilityRoute && capabilityConnection)
   const details = screenDetails(route)
-  const currentMemoryId =
-    route.kind === 'memories' || route.kind === 'graph' ? route.memoryId : null
-  const currentPage = route.kind === 'memories' || route.kind === 'graph' ? route.page : 1
-  const currentProjectId =
-    route.kind === 'memories' || route.kind === 'graph' ? route.projectId : null
-  const currentDepth = route.kind === 'graph' ? route.depth : 1
-  const currentSortBy =
-    route.kind === 'memories' || route.kind === 'graph' ? route.sortBy : 'updated_at'
-  const currentSortOrder =
-    route.kind === 'memories' || route.kind === 'graph' ? route.sortOrder : 'desc'
-  const currentImportanceMin =
-    route.kind === 'memories' || route.kind === 'graph' ? route.importanceMin : null
-
   useEffect(() => {
     document.title = `${details.title} · Forgetful`
   }, [details.title])
@@ -192,18 +180,7 @@ export default function App() {
     }
   }, [])
 
-  const graphLink =
-    currentMemoryId !== null
-      ? graphHref({
-          memoryId: currentMemoryId,
-          page: currentPage,
-          projectId: currentProjectId,
-          depth: currentDepth,
-          sortBy: currentSortBy,
-          sortOrder: currentSortOrder,
-          importanceMin: currentImportanceMin,
-        })
-      : graphHref({})
+  const graphLink = graphHref({})
 
   return (
     <div className="flex min-h-dvh flex-col bg-canvas md:h-dvh md:flex-row md:overflow-hidden">
@@ -269,7 +246,11 @@ export default function App() {
             </Suspense>
           ) : route.kind === 'graph' ? (
             <Suspense fallback={<ScreenFallback />}>
-              <GraphScreen route={route} />
+              <GraphScreen
+                route={route}
+                capabilities={capabilities.state}
+                retryCapabilities={capabilities.retry}
+              />
             </Suspense>
           ) : (
             <UnknownPanel />

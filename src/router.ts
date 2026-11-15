@@ -1,4 +1,10 @@
 import { useSyncExternalStore } from 'react'
+import type { GraphNodeType } from './api/types'
+import {
+  CORE_GRAPH_NODE_TYPES,
+  normalizeGraphNodeTypes,
+  normalizeHiddenGraphNodeTypes,
+} from './lib/graphStyle'
 
 export type MemorySortBy = 'updated_at' | 'importance'
 export type MemorySortOrder = 'asc' | 'desc'
@@ -22,6 +28,8 @@ export interface GraphRoute extends MemoryQuery {
   depth: number
   page: number
   projectId: number | null
+  nodeTypes: GraphNodeType[]
+  hiddenNodeTypes: GraphNodeType[]
 }
 
 export interface DashboardRoute {
@@ -171,6 +179,10 @@ export function parseRoute(hash: string): AppRoute {
       depth: 1,
       page: 1,
       projectId: null,
+      nodeTypes: normalizeGraphNodeTypes((params.get('types') ?? '').split(',').filter(Boolean)),
+      hiddenNodeTypes: normalizeHiddenGraphNodeTypes(
+        (params.get('hide') ?? '').split(',').filter(Boolean),
+      ),
       sortBy: 'updated_at',
       sortOrder: 'desc',
       importanceMin: null,
@@ -293,6 +305,8 @@ export function graphHref(params: {
   depth?: number
   page?: number
   projectId?: number | null
+  nodeTypes?: readonly GraphNodeType[]
+  hiddenNodeTypes?: readonly GraphNodeType[]
   sortBy?: MemorySortBy
   sortOrder?: MemorySortOrder
   importanceMin?: number | null
@@ -301,6 +315,10 @@ export function graphHref(params: {
   const page = params.page ?? 1
   const sortBy = params.sortBy ?? 'updated_at'
   const sortOrder = params.sortOrder ?? 'desc'
+  const nodeTypes = normalizeGraphNodeTypes(params.nodeTypes ?? [])
+  const defaultTypes =
+    nodeTypes.length === CORE_GRAPH_NODE_TYPES.length &&
+    nodeTypes.every((type, index) => type === CORE_GRAPH_NODE_TYPES[index])
   const query = queryString({
     memory: params.memoryId ?? null,
     depth: depth > 1 ? depth : null,
@@ -308,6 +326,8 @@ export function graphHref(params: {
     sort: sortBy === 'importance' ? sortBy : null,
     order: sortOrder === 'asc' ? 'asc' : null,
     project: params.projectId ?? null,
+    types: defaultTypes ? null : nodeTypes.join(','),
+    hide: normalizeHiddenGraphNodeTypes(params.hiddenNodeTypes ?? []).join(','),
     importance: params.importanceMin ?? null,
   })
   return `#/graph${query}`

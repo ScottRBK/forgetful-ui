@@ -57,16 +57,70 @@ seed, reset, or migrate the connected database.
 ### Graph
 
 - Load the graph library and graph data only when the Graph screen is opened.
-- Request a bounded neighbourhood around the selected memory. Respect the server's limits.
-- Support pan, zoom, node selection, and node dragging.
-- Distinguish supported object types visually and identify the selected object in a details panel.
-- Fetch full node content on selection, rather than embedding it in every graph response.
-- Allow depth selection within the limits supported by the backend.
-- Exclude connections whose endpoints are not present in the current graph response.
-- Stop animation and any subscriptions when leaving the screen.
-
-Whole-database loading, live activity highlighting, elaborate motion effects, and voice-driven
-animation are outside the proposed first delivery. Graph appearance remains open to visual review.
+- Bare `#/graph` and the sidebar Graph link open an overview. A selected memory's existing graph
+  link opens a bounded focused neighbourhood. Selecting a node in the overview opens detail only;
+  replacing the overview with a neighbourhood must be an explicit action.
+- The overview shows all non-obsolete memories and all projects, including unlinked projects.
+  Request `GET /api/v1/graph` with explicit `node_types=memory,project`, small bounded pages (100
+  memories), stable created-at ordering, and server-returned pagination metadata. Do not assemble
+  the overview from `/memories`, fetch full records, sweep per-memory links/subgraphs, increase
+  caps, or fabricate connections.
+- Memory pagination covers only memories. Deduplicate repeated projects, optional nodes, and
+  repeated edges across pages, and render only edges whose endpoints are in the loaded scope.
+  Keep isolated records. Accumulate IDs and edges from returned metadata rather than summing
+  repeated per-page counts.
+- Pagination is not a transactional snapshot. Stop with a visible error on empty, repeating,
+  inconsistent, or non-progressing pages. Do not silently truncate or claim complete success.
+  Do not impose an arbitrary page/total cap; follow server totals and finite progress checks.
+- Current pages omit memory links whose endpoints are on different pages. Show a persistent
+  overview notice:
+  “Some connections between memories may be missing until Forgetful #221 is fixed.”
+  Explain that page-local links are omitted and stored links are not lost. Do not repair this by
+  downloading full memories or sweeping subgraphs. Never label the overview connections complete.
+  Track this API limitation in
+  [Forgetful issue #221](https://github.com/ScottRBK/forgetful/issues/221).
+- Memory and Project are shown by default in the overview. Their visibility controls filter the
+  already-loaded display data: hide their nodes, incident edges, counts, accessible list entries,
+  and selected detail; restore them without refetching. Keep fetched core types unchanged and run
+  project scoping on the full loaded data before visibility filtering, so hiding Project does not
+  hide matching related records or disable project filtering. Both can be hidden; selected
+  optional records remain visible. If all loaded records are hidden, show a visibility-empty state
+  distinct from no data. Persist visibility in the hash with a `hide` parameter restricted to
+  Memory and Project, and carry it through type/project changes, refresh, history/reload, and
+  focused-view round trips. Focused neighbourhoods do not apply overview visibility to their
+  centre.
+- Entity, document, code-artifact, file, skill, plan, and task nodes are optional and unchecked by
+  default. Files, skills, plans, and tasks follow capability discovery; plans and tasks share the
+  planning capability. Explicitly disabled types are disabled in the UI and excluded from
+  requests. Unknown or failed discovery permits opt-in reads. The backend caps entity results at
+  10,000; disclose that limit when entities are requested.
+- A project filter filters memories at the API only. Scope other node types client-side using
+  returned project metadata and relations. Document and code-artifact graph nodes do not carry
+  `project_id`; scope them only through their returned document-project and code-artifact-project
+  edges. Keep the requested project visible when it has no memories. Tasks have no project ID, so
+  require Plans when a project filter is active; do not silently fetch unchecked types or show
+  unrelated tasks. Explain that the server does not filter these collections by project.
+- Show real loaded counts and progress, and explicit incomplete/error states with Retry. A later
+  page failure must not render as a successful overview. No default selected-memory detail fetch
+  occurs in the overview.
+- Support pan, zoom, node selection, and node dragging. Distinguish supported object types
+  visually and identify the selected object in a details panel.
+- All links are faint initially. Hover or selection highlights every incident connection
+  returned by the API, regardless of source/target direction, and its associated nodes. Handle
+  force-graph mutating edge endpoints to node objects. Highlighting redraws without restarting
+  simulation, recentering, refitting, or fetching data. Clear hover on exit and dataset
+  replacement.
+- Project nodes are larger and visibly named. Memory labels appear when zoomed in, hovered, or
+  selected. Plan nodes use a distinct magenta from copper entities, with labels retained so colour
+  is not the only identifier. Keep tooltips inert and pointer areas reliable.
+- Fit the complete loaded dataset, including realistic >1,000-node overviews; allow a low enough
+  minimum zoom. Do not refit on hover, selection, detail loading, or ordinary resize. No perpetual
+  decorative animation.
+- Fetch full node content only on selection, rather than embedding it in every graph response.
+- Allow focused depth selection within backend limits and preserve Back to Memories filter/page/
+  sort context. Exclude connections whose endpoints are not present in the focused response.
+- Stop animation and requests when leaving the screen. A late response must not replace a newer
+  selection or filter.
 
 ## Remaining read-only pages
 
@@ -91,8 +145,8 @@ Keep content as safe text or code. Raw HTML, embedded scripts, and external cont
 Optional content formatting does not justify adding dependencies without an audit.
 
 Login is deferred. Sessions waits for backend support. Hide unfinished pages from navigation.
-Do not display invented live data or controls that appear to work but do nothing. Existing Memories
-and Graph behaviour must remain intact; graph visual changes are outside this delivery.
+Do not display invented live data or controls that appear to work but do nothing. Existing
+Memories behaviour and the focused Graph workflow must remain intact.
 
 ### Plan Kanban board
 
@@ -172,7 +226,6 @@ and its assets; it does not need a separate route for each screen.
   wide-screen detail controls as Memories: pointer and keyboard resizing, bounded widths, and
   Expand/Restore. Restore the previous width, keep narrow-screen selection/back behaviour, and
   make no requests during resizing. Dashboard and Timeline do not need a new side panel.
-  Keep Graph unchanged for this iteration.
 - Show the actual project name in the Plans list and board header, using the plan's project ID
   rather than the current filter. Reuse the project summary data needed for the filter; do not
   fetch every project's full detail. Keep an explicit ID fallback if a name is unavailable.
@@ -181,8 +234,9 @@ and its assets; it does not need a separate route for each screen.
 - Mount a screen and start its requests when the user opens it.
 - Cancel requests that are no longer needed where practical. A late response must not replace
   data for a newer selection.
-- Keep requests bounded, apart from the explicit prototype-only summary-list exception above.
-  Do not silently increase limits to fetch the entire knowledge base.
+- Keep requests bounded, apart from the explicit prototype-only summary-list exception above and
+  the explicit graph-overview page exception above. The overview uses lightweight graph summary
+  pages, not full records. Do not silently increase limits to fetch full records.
 - Show API failures as failures, not as empty successful results.
 - Clean up timers, subscriptions, and graph animation when their screen is unmounted.
 
@@ -246,3 +300,7 @@ Future voice support and production packaging need no implementation in this moc
   read-only pages.
 - [x] Allow existing unpaginated summary lists for this prototype only, tracked by issue #215.
 - [x] Open each plan as a read-only Kanban board with selected-task details and manual refresh.
+- [x] Add a paginated all-memory/all-project Graph overview with optional types, project scoping,
+  canvas highlighting, and a documented #221 partial-memory-link exception.
+- [x] Distinguish Plan and Entity colours, and add local Memory/Project visibility toggles with
+  URL persistence while keeping core summary pages loaded.

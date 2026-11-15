@@ -28,6 +28,14 @@ async function installApi(page: Page, options: ApiOptions = {}): Promise<ApiLog[
   await page.route('**/health', (route) =>
     route.fulfill(json({ status: 'healthy', service: 'Forgetful' })),
   )
+  await page.route('**/.well-known', (route) =>
+    route.fulfill(
+      json({
+        schema_version: 1,
+        capabilities: { planning: true, skills: true, files: true, activity_stream: false },
+      }),
+    ),
+  )
   await page.route('**/api/v1/**', async (route) => {
     const request = route.request()
     const url = new URL(request.url())

@@ -8,7 +8,7 @@ The mock-up includes:
 
 - **Dashboard**: connection, feature status, bounded recent memories and activity.
 - **Memories**: paginated list, filters, full memory detail, resize/expand.
-- **Graph**: a bounded neighbourhood around the selected memory.
+- **Graph**: a paginated all-memory overview, plus bounded memory-centred neighbourhoods.
 - **Projects**, **Plans** (a full-page Kanban board for each plan), **Documents**, **Code**,
   **Files**, **Skills**.
 - **Timeline**: server-paginated stored activity history.
@@ -69,6 +69,7 @@ The app uses hash routing:
 - `#/dashboard`
 - `#/memories`
 - `#/memories/<id>?page=<n>&project=<id>&sort=...&order=...&importance=...`
+- `#/graph?project=<id>&types=<comma-separated>&hide=<memory,project>`
 - `#/graph?memory=<id>&depth=<1-3>`
 - `#/projects/<id>?status=...&repo=...`
 - `#/plans?project=...&status=...`
@@ -139,8 +140,40 @@ use the unprefixed `/api/v1` path.
   show metadata only; binary/base64 content is not displayed or previewed.
 - Each page loads its own screen chunk and list when opened. There is no all-list preload, hidden
   screen polling, or periodic refresh.
-- Graph layout and behaviour are unchanged. The graph loads only after a memory is chosen; it
-  requests depth 1-3 and at most 100 nodes.
+- Bare `#/graph` and the sidebar Graph link open an overview of all non-obsolete memories and all
+  projects. It requests `GET /api/v1/graph` with explicit `node_types=memory,project`, 100 memories
+  per page, stable created-at ordering, and deduplicates repeated projects and edges. It does not
+  assemble the overview from `/memories`, fetch full records, or sweep per-memory subgraphs.
+- Some memory connections between different pages are omitted by the current API. A persistent
+  notice says: “Some connections between memories may be missing until Forgetful #221 is fixed.”
+  Stored links are not lost. The overview never labels its connections complete. See
+  [Forgetful issue #221](https://github.com/ScottRBK/forgetful/issues/221).
+- Memory and Project are shown by default in the overview. Their checkboxes are local visibility
+  controls: unchecking hides loaded nodes, incident edges, counts, and selected detail without
+  changing requested core types, restarting pagination, or refetching. Project summaries remain
+  loaded so project filtering and matching documents/code still work while Project is hidden.
+  Both can be hidden, and selected optional records remain visible. The `hide` hash parameter
+  accepts only Memory and Project. Focused neighbourhoods ignore overview visibility.
+- Entity, document, code-artifact, file, skill, plan, and task nodes are optional and unchecked by
+  default. Files, skills, plans, and tasks follow capability discovery; plans and tasks share the
+  planning capability. Explicitly disabled types are not requested. Unknown discovery permits
+  careful opt-in reads. The API caps entity results at 10,000 and the UI says so when relevant.
+- A project filter applies only to memories in the API. Other node types are scoped after loading
+  by project metadata or typed project edges; documents, code artifacts, and entities use their
+  returned project edges. Tasks require Plans when filtering by project. The requested project
+  remains visible when it has no memories.
+- Overview progress reports loaded memories against the real total. Later-page failures and
+  non-progressing pagination fail visibly with Retry; no partial result is labelled successful.
+  Counts use loaded records, not fabricated totals. Pagination follows server totals without an
+  arbitrary page cap and is not a transactional snapshot.
+- The canvas fits the complete loaded dataset, including more than 1,000 nodes, with a low zoom
+  floor. Project nodes are larger and labelled. Memory labels appear when zoomed in, hovered, or
+  selected. Links are faint until hover or selection highlights every incident connection
+  returned by the API, regardless of source/target direction, plus its associated nodes.
+  Highlighting does not restart layout, refit, or fetch data.
+- A focused view remains available from a memory's Open graph link. It requests depth 1-3 and at
+  most 100 nodes, with Back to Memories context and an explicit Overview link. Selecting a memory
+  in the overview opens detail only; Focus neighbourhood is explicit.
 - The graph library and graph code are loaded in separate chunks. Opening Memories or other
   pages does not request them.
 - Network failures are shown as failures. A 404 memory is shown as unavailable.
@@ -148,7 +181,7 @@ use the unprefixed `/api/v1` path.
 - Authentication is not implemented. If the instance reports that auth is enabled, the app
   stops loading records and explains why.
 - There is no persistent cache, offline mode, write operation, voice interaction, live SSE,
-  file preview/download, or full-graph download.
+  file preview/download, or full-record graph preload.
 - Title/project memory sorting and text/date memory filters remain deferred to issue #214.
 - Development and preview use the Vite proxy. A production static deployment uses the API on
   its own origin and deployment prefix.
