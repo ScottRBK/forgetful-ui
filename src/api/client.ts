@@ -6,6 +6,10 @@ import type {
   CodeArtifactRecord,
   DocumentListResponse,
   DocumentRecord,
+  EntityListResponse,
+  EntityMemoriesResponse,
+  EntityRecord,
+  EntityRelationshipsResponse,
   FileListResponse,
   FileRecord,
   GraphNodeType,
@@ -321,6 +325,41 @@ export function getSkill(skillId: number, signal?: AbortSignal): Promise<SkillRe
 
 export function getSkillLinks(skillId: number, signal?: AbortSignal): Promise<SkillLinks> {
   return getJson<SkillLinks>(`${apiRoot()}/skills/${skillId}/links`, signal)
+}
+
+export function listEntities(
+  params: { entityType: string | null; limit: number; offset: number },
+  signal?: AbortSignal,
+): Promise<EntityListResponse> {
+  return getJson<EntityListResponse>(
+    queryPath(`${apiRoot()}/entities`, {
+      entity_type: params.entityType,
+      limit: params.limit,
+      offset: params.offset,
+    }),
+    signal,
+  )
+}
+
+export function getEntity(entityId: number, signal?: AbortSignal): Promise<EntityRecord> {
+  return getJson<EntityRecord>(`${apiRoot()}/entities/${entityId}`, signal)
+}
+
+export function getEntityMemories(
+  entityId: number,
+  signal?: AbortSignal,
+): Promise<EntityMemoriesResponse> {
+  return getJson<EntityMemoriesResponse>(`${apiRoot()}/entities/${entityId}/memories`, signal)
+}
+
+export function getEntityRelationships(
+  entityId: number,
+  signal?: AbortSignal,
+): Promise<EntityRelationshipsResponse> {
+  return getJson<EntityRelationshipsResponse>(
+    `${apiRoot()}/entities/${entityId}/relationships`,
+    signal,
+  )
 }
 
 export function listActivity(

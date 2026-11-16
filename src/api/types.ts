@@ -268,6 +268,84 @@ export interface SkillLinks {
   document_ids?: number[]
 }
 
+export type EntityTypeName = 'Organization' | 'Individual' | 'Team' | 'Device' | 'System' | 'Other'
+
+export const ENTITY_TYPE_OPTIONS = [
+  'Organization',
+  'Individual',
+  'Team',
+  'Device',
+  'System',
+  'Other',
+] as const satisfies readonly EntityTypeName[]
+
+export function parseEntityTypeName(value: string | null): EntityTypeName | null {
+  if (!value) return null
+  return (ENTITY_TYPE_OPTIONS as readonly string[]).includes(value)
+    ? (value as EntityTypeName)
+    : null
+}
+
+export interface EntitySummary {
+  id: number
+  name: string
+  entity_type: EntityTypeName
+  custom_type?: string | null
+  tags?: string[]
+  aka?: string[]
+  project_ids?: number[] | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface EntityRecord extends EntitySummary {
+  notes?: string | null
+  source_repo?: string | null
+  source_files?: string[] | null
+  source_url?: string | null
+  confidence?: number | null
+  encoding_agent?: string | null
+  encoding_version?: string | null
+  agent_id?: string | null
+  agent_version?: string | null
+  agent_model?: string | null
+}
+
+export interface EntityListResponse {
+  entities: EntitySummary[]
+  total: number
+  limit: number
+  offset: number
+}
+
+export interface EntityLinkedMemory {
+  id: number
+  title: string
+}
+
+export interface EntityMemoriesResponse {
+  memory_ids: number[]
+  count: number
+  memories: EntityLinkedMemory[]
+}
+
+export interface EntityRelationshipRecord {
+  id: number
+  source_entity_id: number
+  target_entity_id: number
+  relationship_type: string
+  strength?: number | null
+  confidence?: number | null
+  metadata?: Record<string, unknown> | null
+  created_at?: string
+  updated_at?: string
+}
+
+export interface EntityRelationshipsResponse {
+  relationships: EntityRelationshipRecord[]
+  total: number
+}
+
 export interface ActivityEventRecord {
   id: number
   entity_type: string

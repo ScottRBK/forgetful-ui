@@ -5,6 +5,7 @@ import {
   CodeIcon,
   DashboardIcon,
   DocumentsIcon,
+  EntitiesIcon,
   FilesIcon,
   GraphIcon,
   MemoriesIcon,
@@ -96,6 +97,12 @@ function navItems(
     { label: 'Code', href: '#/code', active: route.kind === 'code', icon: CodeIcon },
     { label: 'Files', href: filesHref({}), active: route.kind === 'files', icon: FilesIcon },
     { label: 'Skills', href: '#/skills', active: route.kind === 'skills', icon: SkillsIcon },
+    {
+      label: 'Entities',
+      href: '#/entities',
+      active: route.kind === 'entities',
+      icon: EntitiesIcon,
+    },
     {
       label: 'Timeline',
       href: '#/timeline',

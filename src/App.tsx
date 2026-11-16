@@ -15,6 +15,7 @@ const DocumentsScreen = lazy(() => import('./screens/DocumentsScreen'))
 const CodeScreen = lazy(() => import('./screens/CodeScreen'))
 const FilesScreen = lazy(() => import('./screens/FilesScreen'))
 const SkillsScreen = lazy(() => import('./screens/SkillsScreen'))
+const EntitiesScreen = lazy(() => import('./screens/EntitiesScreen'))
 const TimelineScreen = lazy(() => import('./screens/TimelineScreen'))
 
 function screenDetails(route: ReturnType<typeof useHashRoute>): {
@@ -58,6 +59,12 @@ function screenDetails(route: ReturnType<typeof useHashRoute>): {
     return {
       title: 'Skills',
       subtitle: route.skillId ? `Skill #${route.skillId}` : 'Browse skills',
+    }
+  }
+  if (route.kind === 'entities') {
+    return {
+      title: 'Entities',
+      subtitle: route.entityId ? `Entity #${route.entityId}` : 'Browse entities',
     }
   }
   if (route.kind === 'timeline') {
@@ -239,6 +246,10 @@ export default function App() {
                 capabilities={capabilities.state}
                 retryCapabilities={capabilities.retry}
               />
+            </Suspense>
+          ) : route.kind === 'entities' ? (
+            <Suspense fallback={<ScreenFallback />}>
+              <EntitiesScreen route={route} />
             </Suspense>
           ) : route.kind === 'timeline' ? (
             <Suspense fallback={<ScreenFallback />}>

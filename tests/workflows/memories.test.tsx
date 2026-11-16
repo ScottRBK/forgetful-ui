@@ -189,6 +189,7 @@ describe('Application shell', () => {
       'Code',
       'Files',
       'Skills',
+      'Entities',
       'Timeline',
       'Graph',
     ]) {

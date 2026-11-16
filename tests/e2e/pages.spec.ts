@@ -20,6 +20,9 @@ interface PageApiOptions {
   files?: unknown[]
   skills?: unknown[]
   skillLinks?: Record<string, unknown>
+  entities?: unknown[]
+  entityMemories?: Record<string, unknown>
+  entityRelationships?: Record<string, unknown>
 }
 
 const syntheticProject = {
@@ -170,6 +173,37 @@ const syntheticSkillLinks = {
   file_ids: [75],
   code_artifact_ids: [74],
   document_ids: [73],
+}
+
+const syntheticEntity = {
+  id: 81,
+  name: 'Synthetic entity',
+  entity_type: 'Individual',
+  custom_type: null,
+  tags: ['fixture', 'entity'],
+  aka: ['Syn entity'],
+  project_ids: [1],
+  notes: 'Synthetic entity notes.',
+  created_at: '2026-01-01T00:00:00Z',
+  updated_at: '2026-01-02T00:00:00Z',
+}
+
+const syntheticEntityMemories = {
+  memory_ids: [901],
+  count: 1,
+  memories: [{ id: 901, title: 'Synthetic dashboard memory' }],
+}
+
+const syntheticEntityRelationships = {
+  relationships: [
+    {
+      id: 15,
+      source_entity_id: 81,
+      target_entity_id: 82,
+      relationship_type: 'works_at',
+    },
+  ],
+  total: 1,
 }
 
 async function installBaseApi(page: Page, options: PageApiOptions = {}) {
@@ -340,6 +374,49 @@ async function installBaseApi(page: Page, options: PageApiOptions = {}) {
         json(
           (options.skills ?? []).find((item) => (item as { id?: number }).id === id) ??
             syntheticSkill,
+        ),
+      )
+      return
+    }
+    if (url.pathname === '/api/v1/entities') {
+      const entityType = url.searchParams.get('entity_type')
+      const all = (options.entities ?? [syntheticEntity])
+        .filter(
+          (item) =>
+            entityType === null || (item as { entity_type?: string }).entity_type === entityType,
+        )
+        .sort(
+          (left, right) =>
+            String((right as { updated_at?: string }).updated_at ?? '').localeCompare(
+              String((left as { updated_at?: string }).updated_at ?? ''),
+            ) || Number((right as { id?: number }).id) - Number((left as { id?: number }).id),
+        )
+      const limit = Number(url.searchParams.get('limit') ?? 20)
+      const offset = Number(url.searchParams.get('offset') ?? 0)
+      const entities = all.slice(offset, offset + limit)
+      await route.fulfill(json({ entities, total: all.length, limit, offset }))
+      return
+    }
+    const entityMemoriesMatch = /^\/api\/v1\/entities\/(\d+)\/memories$/.exec(url.pathname)
+    if (entityMemoriesMatch?.[1]) {
+      await route.fulfill(json(options.entityMemories ?? syntheticEntityMemories))
+      return
+    }
+    const entityRelationshipsMatch = /^\/api\/v1\/entities\/(\d+)\/relationships$/.exec(
+      url.pathname,
+    )
+    if (entityRelationshipsMatch?.[1]) {
+      await route.fulfill(json(options.entityRelationships ?? syntheticEntityRelationships))
+      return
+    }
+    const entityMatch = /^\/api\/v1\/entities\/(\d+)$/.exec(url.pathname)
+    if (entityMatch?.[1]) {
+      const id = Number(entityMatch[1])
+      await route.fulfill(
+        json(
+          (options.entities ?? [syntheticEntity]).find(
+            (item) => (item as { id?: number }).id === id,
+          ) ?? syntheticEntity,
         ),
       )
       return
@@ -1511,6 +1588,90 @@ test('documents filters and renders content as inert text', async ({ page }) => 
   expect(requests.every((url) => url.pathname !== '/api/v1/code-artifacts')).toBe(true)
 })
 
+test('entities paginate, filter by type, and deep-link off-page detail', async ({ page }) => {
+  const relatedEntity = {
+    ...syntheticEntity,
+    id: 82,
+    name: 'Synthetic organization',
+    entity_type: 'Organization',
+    notes: 'Related organization notes.',
+  }
+  const pageTwoEntity = {
+    ...syntheticEntity,
+    id: 120,
+    name: 'Synthetic entity page two',
+    notes: 'Off-page entity detail.',
+  }
+  const entities = [
+    ...Array.from({ length: 20 }, (_, index) => ({
+      ...syntheticEntity,
+      id: index + 1,
+      name: `Synthetic entity ${index + 1}`,
+      updated_at: `2026-01-${String(index + 1).padStart(2, '0')}T00:00:00Z`,
+    })),
+    { ...relatedEntity, updated_at: '2026-01-21T00:00:00Z' },
+    { ...pageTwoEntity, updated_at: '2025-12-01T00:00:00Z' },
+  ]
+
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    entities,
+    memories: [syntheticMemory],
+  })
+
+  await page.goto('/#/entities')
+  await expect(page.getByRole('heading', { name: 'Entities', level: 1 })).toBeVisible()
+  await expect(page.getByText('22 total')).toBeVisible()
+  await expect(page.getByText('Page 1 of 2')).toBeVisible()
+  await page.getByRole('link', { name: 'Next page' }).click()
+  await expect(page).toHaveURL(/#\/entities\?page=2$/)
+  await page.getByRole('link', { name: /Synthetic entity page two/ }).click()
+  await expect(page).toHaveURL(/#\/entities\/120\?page=2$/)
+  await expect(
+    page.getByRole('heading', { name: 'Synthetic entity page two', level: 3 }),
+  ).toBeVisible()
+
+  await page.setViewportSize({ width: 1400, height: 900 })
+  await page.goto('/#/entities/1?page=1')
+  await expect(page.getByRole('heading', { name: 'Synthetic entity 1', level: 3 })).toBeVisible()
+  await expect(
+    page
+      .getByRole('list', { name: 'Entities' })
+      .getByRole('link', { name: 'Synthetic entity 1', exact: true }),
+  ).toHaveCount(0)
+  await expect(page.getByText('Page 1 of 2')).toBeVisible()
+  await expect(
+    page
+      .getByRole('list', { name: 'Entities' })
+      .getByRole('link', { name: /Synthetic entity page two/ }),
+  ).toHaveCount(0)
+
+  await page.goto('/#/entities/20')
+  await expect(page.getByRole('heading', { name: 'Synthetic entity 20', level: 3 })).toBeVisible()
+  await page.route('**/api/v1/entities/20/relationships', (route) =>
+    route.fulfill(
+      json({
+        relationships: [
+          { id: 1, source_entity_id: 20, target_entity_id: 82, relationship_type: 'works_at' },
+        ],
+        total: 1,
+      }),
+    ),
+  )
+  await page.reload()
+  await expect(
+    page.getByLabel('Relationships').getByRole('link', { name: /Synthetic organization/ }),
+  ).toContainText('Organization')
+  await page
+    .getByLabel('Relationships')
+    .getByRole('link', { name: /Synthetic organization/ })
+    .click()
+  await expect(page).toHaveURL(/#\/entities\/82$/)
+
+  await page.getByLabel('Entity type filter').selectOption('Organization')
+  await expect(page).toHaveURL(/#\/entities\/82\?type=Organization$/)
+})
+
 test('code artifacts show readable inert source with project/language filters', async ({
   page,
 }) => {
@@ -1795,6 +1956,7 @@ test('remaining pages remain usable across 390, 1024 and 1440 widths', async ({ 
     { hash: '#/code', heading: 'Code', listTitle: 'Code artifacts' },
     { hash: '#/files', heading: 'Files', listTitle: 'Files' },
     { hash: '#/skills', heading: 'Skills', listTitle: 'Skills' },
+    { hash: '#/entities', heading: 'Entities', listTitle: 'Entities' },
     { hash: '#/timeline', heading: 'Timeline', listTitle: 'Activity history' },
   ]
 
@@ -1858,6 +2020,12 @@ test('remaining pages remain usable across 390, 1024 and 1440 widths', async ({ 
           page
             .getByRole('list', { name: 'Skills' })
             .or(page.getByText('No skills found', { exact: true })),
+        ).toBeVisible()
+      } else if (item.hash === '#/entities') {
+        await expect(
+          page
+            .getByRole('list', { name: 'Entities' })
+            .or(page.getByText('No entities found', { exact: true })),
         ).toBeVisible()
       } else if (item.hash === '#/timeline') {
         await expect(
@@ -2379,6 +2547,7 @@ test('all resource pages resize, fit and expand/restore their detail pane', asyn
     codeArtifacts: [syntheticCode],
     files: [syntheticFile],
     skills: [syntheticSkill],
+    entities: [syntheticEntity],
   })
 
   const pages = [
@@ -2387,6 +2556,7 @@ test('all resource pages resize, fit and expand/restore their detail pane', asyn
     { hash: '#/code/74', list: 'Code artifacts', detail: 'Synthetic code artifact' },
     { hash: '#/files/75', list: 'Files', detail: 'synthetic.png' },
     { hash: '#/skills/76', list: 'Skills', detail: 'synthetic-skill' },
+    { hash: '#/entities/81', list: 'Entities', detail: 'Synthetic entity' },
   ]
 
   await page.setViewportSize({ width: 1440, height: 1000 })

@@ -78,6 +78,7 @@ The app uses hash routing:
 - `#/code/<id>?project=...&language=...`
 - `#/files/<id>?project=...&mime=...`
 - `#/skills/<id>?project=...&importance=...`
+- `#/entities/<id>?page=<n>&type=...`
 - `#/timeline?page=<n>&entity=...&action=...`
 
 The browser calls the API on the same server. In development, Vite proxies `/api`, `/health`,

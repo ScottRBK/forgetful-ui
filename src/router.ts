@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { GraphNodeType } from './api/types'
+import { type EntityTypeName, type GraphNodeType, parseEntityTypeName } from './api/types'
 import {
   CORE_GRAPH_NODE_TYPES,
   normalizeGraphNodeTypes,
@@ -86,6 +86,13 @@ export interface SkillsRoute {
   importanceMin: number | null
 }
 
+export interface EntitiesRoute {
+  kind: 'entities'
+  entityId: number | null
+  page: number
+  entityType: EntityTypeName | null
+}
+
 export interface TimelineRoute {
   kind: 'timeline'
   page: number
@@ -107,6 +114,7 @@ export type AppRoute =
   | CodeRoute
   | FilesRoute
   | SkillsRoute
+  | EntitiesRoute
   | TimelineRoute
   | UnknownRoute
 
@@ -343,6 +351,16 @@ export function parseRoute(hash: string): AppRoute {
     }
   }
 
+  if (first === 'entities' && segments.length <= 2) {
+    const params = paramsOf(query)
+    return {
+      kind: 'entities',
+      entityId: segments[1] ? optionalPositiveInt(segments[1]) : null,
+      page: positiveInt(params.get('page'), 1),
+      entityType: parseEntityTypeName(textParam(params, 'type')),
+    }
+  }
+
   if (first === 'timeline' && segments.length === 1) {
     const params = paramsOf(query)
     return {
@@ -494,6 +512,20 @@ export function skillsHref(params: {
     importance: params.importanceMin ?? null,
   })
   return skillId === null ? `#/skills${query}` : `#/skills/${skillId}${query}`
+}
+
+export function entitiesHref(params: {
+  entityId?: number | null
+  page?: number
+  entityType?: EntityTypeName | null
+}): string {
+  const entityId = params.entityId ?? null
+  const page = params.page ?? 1
+  const query = queryString({
+    page: page > 1 ? page : null,
+    type: params.entityType ?? null,
+  })
+  return entityId === null ? `#/entities${query}` : `#/entities/${entityId}${query}`
 }
 
 export function timelineHref(params: {

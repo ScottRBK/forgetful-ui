@@ -230,6 +230,23 @@ export function SkillsIcon({ className = 'h-4 w-4' }: IconProps) {
   )
 }
 
+export function EntitiesIcon({ className = 'h-4 w-4' }: IconProps) {
+  return (
+    <svg
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      className={className}
+      aria-hidden="true"
+    >
+      <circle cx="9" cy="8" r="2.5" />
+      <circle cx="16.5" cy="9.5" r="2.2" />
+      <path d="M4.5 19.5c.8-2.6 2.6-4 4.5-4s3.7 1.4 4.5 4M13.2 19.5c.6-2.1 2-3.5 3.8-3.5 1.2 0 2.4.6 3 2" />
+    </svg>
+  )
+}
+
 export function TimelineIcon({ className = 'h-4 w-4' }: IconProps) {
   return (
     <svg
