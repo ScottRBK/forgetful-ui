@@ -1,9 +1,44 @@
 import { describe, expect, it } from 'vitest'
-import { apiRoot, deploymentPrefix, getNodeDetail, getSubgraph } from '../../src/api/client'
+import {
+  apiRoot,
+  deploymentPrefix,
+  getNodeDetail,
+  getSubgraph,
+  listMemories,
+} from '../../src/api/client'
 import type { GraphNodeType } from '../../src/api/types'
 import { installFetchStub, jsonResponse } from '../helpers/fetchStub'
 
 describe('API client', () => {
+  it('maps memory list filters to API query parameters', async () => {
+    const fetcher = installFetchStub([
+      {
+        match: '/api/v1/memories',
+        handler: () => jsonResponse({ memories: [], total: 0, limit: 20, offset: 0 }),
+      },
+    ])
+
+    await listMemories({
+      limit: 20,
+      offset: 0,
+      projectId: 3,
+      sortBy: 'project_name',
+      sortOrder: 'asc',
+      importanceMin: 4,
+      importanceMax: 9,
+      q: 'release',
+      updatedFrom: '2026-01-01T00:00:00.000Z',
+      updatedTo: '2026-12-31T23:59:59.000Z',
+    })
+
+    const request = fetcher.requests[0]
+    expect(request?.url.searchParams.get('sort_by')).toBe('project_name')
+    expect(request?.url.searchParams.get('importance_max')).toBe('9')
+    expect(request?.url.searchParams.get('q')).toBe('release')
+    expect(request?.url.searchParams.get('updated_from')).toBe('2026-01-01T00:00:00.000Z')
+    expect(request?.url.searchParams.get('updated_to')).toBe('2026-12-31T23:59:59.000Z')
+  })
+
   it('derives the API prefix from the UI deployment path', () => {
     expect(deploymentPrefix('/')).toBe('')
     expect(deploymentPrefix('/ui/')).toBe('')

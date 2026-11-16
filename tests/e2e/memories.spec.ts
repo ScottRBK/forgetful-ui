@@ -874,3 +874,46 @@ test('keeps sortable headers readable at the minimum list width', async ({ page 
   )
   expect(overflow).toBeLessThanOrEqual(1)
 })
+
+test('memory search and title sort round-trip through the URL', async ({ page }) => {
+  await installApi(page, {
+    memories: (url) => {
+      const q = url.searchParams.get('q')
+      const sortBy = url.searchParams.get('sort_by')
+      if (sortBy === 'title' && q === 'needle') {
+        return {
+          body: {
+            memories: [syntheticMemory(502, 'Synthetic title sort row')],
+            total: 1,
+            limit: 20,
+            offset: 0,
+          },
+        }
+      }
+      if (q === 'needle') {
+        return {
+          body: {
+            memories: [syntheticMemory(501, 'Synthetic needle match')],
+            total: 1,
+            limit: 20,
+            offset: 0,
+          },
+        }
+      }
+      return { body: { memories: [], total: 0, limit: 20, offset: 0 } }
+    },
+  })
+
+  await page.goto('/#/memories')
+  await page.getByLabel('Search memories').fill('needle')
+  await page.getByRole('button', { name: 'Apply search' }).click()
+  await expect(page).toHaveURL(/#\/memories\?q=needle$/)
+  await expect(page.getByRole('link', { name: 'Synthetic needle match' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Memory' }).click()
+  await expect(page).toHaveURL(/#\/memories\?/)
+  const hash = new URL(page.url()).hash
+  expect(hash).toContain('q=needle')
+  expect(hash).toContain('sort=title')
+  await expect(page.getByRole('link', { name: 'Synthetic title sort row' })).toBeVisible()
+})

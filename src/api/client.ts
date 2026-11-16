@@ -104,9 +104,13 @@ export function listMemories(
     limit: number
     offset: number
     projectId: number | null
-    sortBy: 'updated_at' | 'importance'
+    sortBy: 'updated_at' | 'importance' | 'title' | 'project_name'
     sortOrder: 'asc' | 'desc'
     importanceMin: number | null
+    importanceMax: number | null
+    q: string | null
+    updatedFrom: string | null
+    updatedTo: string | null
   },
   signal?: AbortSignal,
 ): Promise<MemoryListResponse> {
@@ -118,6 +122,10 @@ export function listMemories(
   })
   if (params.projectId !== null) query.set('project_id', String(params.projectId))
   if (params.importanceMin !== null) query.set('importance_min', String(params.importanceMin))
+  if (params.importanceMax !== null) query.set('importance_max', String(params.importanceMax))
+  if (params.q !== null && params.q !== '') query.set('q', params.q)
+  if (params.updatedFrom !== null) query.set('updated_from', params.updatedFrom)
+  if (params.updatedTo !== null) query.set('updated_to', params.updatedTo)
   return getJson<MemoryListResponse>(`${apiRoot()}/memories?${query.toString()}`, signal)
 }
 

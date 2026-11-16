@@ -5,6 +5,11 @@ import { EmptyPanel, ErrorPanel, LoadingRows } from '../components/Feedback'
 import { ArrowLeftIcon, ArrowRightIcon, ExternalIcon, RefreshIcon } from '../components/Icons'
 import { useResizablePane } from '../hooks/useResizablePane'
 import { formatDate, formatShortDate, pluralMemories, safeHttpUrl } from '../lib/format'
+import {
+  datetimeLocalValueToIso,
+  hasActiveMemoryFilters,
+  isoToDatetimeLocalValue,
+} from '../lib/memoryFilters'
 import { pageItems } from '../lib/pagination'
 import type { MemoryRoute, MemorySortBy } from '../router'
 import { graphHref, memoriesHref, navigate } from '../router'
@@ -26,7 +31,15 @@ type DetailState =
 
 type SelectionContext = Pick<
   MemoryRoute,
-  'page' | 'projectId' | 'sortBy' | 'sortOrder' | 'importanceMin'
+  | 'page'
+  | 'projectId'
+  | 'sortBy'
+  | 'sortOrder'
+  | 'importanceMin'
+  | 'importanceMax'
+  | 'q'
+  | 'updatedFrom'
+  | 'updatedTo'
 >
 
 type ProjectState =
@@ -107,6 +120,10 @@ function DetailPane({
               sortBy: route.sortBy,
               sortOrder: route.sortOrder,
               importanceMin: route.importanceMin,
+              importanceMax: route.importanceMax,
+              q: route.q,
+              updatedFrom: route.updatedFrom,
+              updatedTo: route.updatedTo,
             })}
             className="font-medium text-teal"
           >
@@ -162,6 +179,10 @@ function DetailPane({
             sortBy: route.sortBy,
             sortOrder: route.sortOrder,
             importanceMin: route.importanceMin,
+            importanceMax: route.importanceMax,
+            q: route.q,
+            updatedFrom: route.updatedFrom,
+            updatedTo: route.updatedTo,
           })}
           className="btn-secondary shrink-0"
         >
@@ -280,6 +301,14 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
   const [detailState, setDetailState] = useState<DetailState>({ status: 'idle' })
   const [projectState, setProjectState] = useState<ProjectState>({ status: 'loading' })
   const [refreshToken, setRefreshToken] = useState(0)
+  const [searchInput, setSearchInput] = useState(route.q ?? '')
+  const [updatedFromInput, setUpdatedFromInput] = useState(
+    route.updatedFrom ? isoToDatetimeLocalValue(route.updatedFrom) : '',
+  )
+  const [updatedToInput, setUpdatedToInput] = useState(
+    route.updatedTo ? isoToDatetimeLocalValue(route.updatedTo) : '',
+  )
+  const [rangeError, setRangeError] = useState<string | null>(null)
   const pane = useResizablePane({
     minWidth: 320,
     maxWidth: 720,
@@ -296,6 +325,13 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
   const lastSelectionContext = useRef<SelectionContext | null>(null)
 
   const offset = (route.page - 1) * PAGE_SIZE
+
+  useEffect(() => {
+    setSearchInput(route.q ?? '')
+    setUpdatedFromInput(route.updatedFrom ? isoToDatetimeLocalValue(route.updatedFrom) : '')
+    setUpdatedToInput(route.updatedTo ? isoToDatetimeLocalValue(route.updatedTo) : '')
+    setRangeError(null)
+  }, [route.q, route.updatedFrom, route.updatedTo])
 
   useEffect(() => {
     if (route.memoryId === null) pane.setExpanded(false)
@@ -315,6 +351,10 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
         sortBy: route.sortBy,
         sortOrder: route.sortOrder,
         importanceMin: route.importanceMin,
+        importanceMax: route.importanceMax,
+        q: route.q,
+        updatedFrom: route.updatedFrom,
+        updatedTo: route.updatedTo,
       },
       controller.signal,
     )
@@ -336,7 +376,18 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
       active = false
       controller.abort()
     }
-  }, [offset, route.projectId, route.sortBy, route.sortOrder, route.importanceMin, refreshToken])
+  }, [
+    offset,
+    route.projectId,
+    route.sortBy,
+    route.sortOrder,
+    route.importanceMin,
+    route.importanceMax,
+    route.q,
+    route.updatedFrom,
+    route.updatedTo,
+    refreshToken,
+  ])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshToken triggers a reload
   useEffect(() => {
@@ -411,7 +462,11 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
         previousContext.projectId === route.projectId &&
         previousContext.sortBy === route.sortBy &&
         previousContext.sortOrder === route.sortOrder &&
-        previousContext.importanceMin === route.importanceMin
+        previousContext.importanceMin === route.importanceMin &&
+        previousContext.importanceMax === route.importanceMax &&
+        previousContext.q === route.q &&
+        previousContext.updatedFrom === route.updatedFrom &&
+        previousContext.updatedTo === route.updatedTo
       if (previousId !== null && sameContext && isNarrow) {
         const row = listRef.current?.querySelector<HTMLElement>(`[data-memory-id="${previousId}"]`)
         if (row) {
@@ -431,6 +486,10 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
       sortBy: route.sortBy,
       sortOrder: route.sortOrder,
       importanceMin: route.importanceMin,
+      importanceMax: route.importanceMax,
+      q: route.q,
+      updatedFrom: route.updatedFrom,
+      updatedTo: route.updatedTo,
     }
     if (detailState.status === 'idle' || detailState.status === 'loading') return
     if (detailState.memoryId !== route.memoryId) return
@@ -451,6 +510,10 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
     route.sortBy,
     route.sortOrder,
     route.importanceMin,
+    route.importanceMax,
+    route.q,
+    route.updatedFrom,
+    route.updatedTo,
   ])
 
   const projects = projectState.status === 'ready' ? projectState.projects : []
@@ -466,7 +529,7 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
     listState.status === 'ready' && listState.memories.length === 0
       ? listState.total > 0
         ? 'page-empty'
-        : route.projectId !== null || route.importanceMin !== null
+        : hasActiveMemoryFilters(route)
           ? 'filter-empty'
           : 'instance-empty'
       : null
@@ -476,6 +539,10 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
       sortBy: route.sortBy,
       sortOrder: route.sortOrder,
       importanceMin: route.importanceMin,
+      importanceMax: route.importanceMax,
+      q: route.q,
+      updatedFrom: route.updatedFrom,
+      updatedTo: route.updatedTo,
       projectId: route.projectId,
     }
   }
@@ -485,9 +552,58 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
     navigate(memoriesHref({ page: 1, ...queryContext(), projectId }))
   }
 
-  function handleImportanceChange(value: string): void {
+  function handleImportanceMinChange(value: string): void {
     const importanceMin = value === '' ? null : Number(value)
-    navigate(memoriesHref({ page: 1, ...queryContext(), importanceMin }))
+    const importanceMax =
+      importanceMin !== null && route.importanceMax !== null && importanceMin > route.importanceMax
+        ? null
+        : route.importanceMax
+    navigate(memoriesHref({ page: 1, ...queryContext(), importanceMin, importanceMax }))
+  }
+
+  function handleImportanceMaxChange(value: string): void {
+    const importanceMax = value === '' ? null : Number(value)
+    if (
+      importanceMax !== null &&
+      route.importanceMin !== null &&
+      route.importanceMin > importanceMax
+    ) {
+      setRangeError('Maximum importance must be at least the minimum.')
+      return
+    }
+    setRangeError(null)
+    navigate(memoriesHref({ page: 1, ...queryContext(), importanceMax }))
+  }
+
+  function applySearch(): void {
+    const q = searchInput === '' ? null : searchInput
+    navigate(memoriesHref({ page: 1, ...queryContext(), q }))
+  }
+
+  function applyUpdatedRange(): void {
+    const updatedFrom = datetimeLocalValueToIso(updatedFromInput)
+    const updatedTo = datetimeLocalValueToIso(updatedToInput)
+    if (updatedFromInput !== '' && updatedFrom === null) {
+      setRangeError('Updated from must be a valid date and time.')
+      return
+    }
+    if (updatedToInput !== '' && updatedTo === null) {
+      setRangeError('Updated to must be a valid date and time.')
+      return
+    }
+    if (updatedFrom !== null && updatedTo !== null && new Date(updatedFrom) > new Date(updatedTo)) {
+      setRangeError('Updated from must not be after updated to.')
+      return
+    }
+    setRangeError(null)
+    navigate(
+      memoriesHref({
+        page: 1,
+        ...queryContext(),
+        updatedFrom,
+        updatedTo,
+      }),
+    )
   }
 
   function handleSort(column: MemorySortBy): void {
@@ -512,76 +628,170 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
       style={pane.layoutStyle}
     >
       <section ref={listRef} className="memories-list panel-raised min-w-0 overflow-hidden">
-        <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-3 sm:px-4">
-          <label htmlFor="project-filter" className="sr-only">
-            Project filter
-          </label>
-          <select
-            id="project-filter"
-            aria-label="Project filter"
-            value={route.projectId ?? ''}
-            onChange={(event) => handleProjectChange(event.target.value)}
-            className="field"
-          >
-            <option value="">All projects</option>
-            {projects.map((project) => (
-              <option key={project.id} value={project.id}>
-                {project.name}
-              </option>
-            ))}
-            {route.projectId !== null && !projectNames.has(route.projectId) && (
-              <option value={route.projectId}>Project {route.projectId}</option>
+        <div className="flex flex-col gap-2 border-b border-line px-3 py-3 sm:px-4">
+          <div className="flex flex-wrap items-center gap-2">
+            <label htmlFor="project-filter" className="sr-only">
+              Project filter
+            </label>
+            <select
+              id="project-filter"
+              aria-label="Project filter"
+              value={route.projectId ?? ''}
+              onChange={(event) => handleProjectChange(event.target.value)}
+              className="field"
+            >
+              <option value="">All projects</option>
+              {projects.map((project) => (
+                <option key={project.id} value={project.id}>
+                  {project.name}
+                </option>
+              ))}
+              {route.projectId !== null && !projectNames.has(route.projectId) && (
+                <option value={route.projectId}>Project {route.projectId}</option>
+              )}
+            </select>
+
+            <label htmlFor="importance-min-filter" className="sr-only">
+              Minimum importance
+            </label>
+            <select
+              id="importance-min-filter"
+              aria-label="Minimum importance"
+              value={route.importanceMin ?? ''}
+              onChange={(event) => handleImportanceMinChange(event.target.value)}
+              className="field max-w-[150px]"
+            >
+              <option value="">Any importance</option>
+              {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
+                <option key={value} value={value}>
+                  Importance {value}+
+                </option>
+              ))}
+            </select>
+
+            <label htmlFor="importance-max-filter" className="sr-only">
+              Maximum importance
+            </label>
+            <select
+              id="importance-max-filter"
+              aria-label="Maximum importance"
+              value={route.importanceMax ?? ''}
+              onChange={(event) => handleImportanceMaxChange(event.target.value)}
+              className="field max-w-[150px]"
+            >
+              <option value="">Any ceiling</option>
+              {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
+                <option key={value} value={value}>
+                  Up to {value}
+                </option>
+              ))}
+            </select>
+
+            {hasActiveMemoryFilters(route) && (
+              <a
+                href={clearFiltersHref()}
+                className="text-[11px] font-medium text-teal hover:underline"
+              >
+                Clear filters
+              </a>
             )}
-          </select>
 
-          <label htmlFor="importance-filter" className="sr-only">
-            Minimum importance
-          </label>
-          <select
-            id="importance-filter"
-            aria-label="Minimum importance"
-            value={route.importanceMin ?? ''}
-            onChange={(event) => handleImportanceChange(event.target.value)}
-            className="field max-w-[150px]"
-          >
-            <option value="">Any importance</option>
-            {Array.from({ length: 10 }, (_, index) => index + 1).map((value) => (
-              <option key={value} value={value}>
-                Importance {value}+
-              </option>
-            ))}
-          </select>
+            {projectState.status === 'error' && (
+              <span className="text-[10px] text-copper" title={projectState.message}>
+                Project filter unavailable
+              </span>
+            )}
 
-          {(route.projectId !== null || route.importanceMin !== null) && (
-            <a
-              href={clearFiltersHref()}
-              className="text-[11px] font-medium text-teal hover:underline"
-            >
-              Clear filters
-            </a>
-          )}
-
-          {projectState.status === 'error' && (
-            <span className="text-[10px] text-copper" title={projectState.message}>
-              Project filter unavailable
-            </span>
-          )}
-
-          <div className="ml-auto flex items-center gap-2">
-            <span className="hidden text-[11px] text-muted sm:inline">
-              {listState.status === 'ready' ? pluralMemories(total) : 'Loading'}
-            </span>
-            <button
-              type="button"
-              onClick={retry}
-              aria-label="Refresh memories"
-              title="Refresh memories"
-              className="btn-secondary"
-            >
-              <RefreshIcon className="h-3.5 w-3.5" />
-              <span className="hidden sm:inline">Refresh</span>
-            </button>
+            <div className="ml-auto flex items-center gap-2">
+              <span className="hidden text-[11px] text-muted sm:inline">
+                {listState.status === 'ready' ? pluralMemories(total) : 'Loading'}
+              </span>
+              <button
+                type="button"
+                onClick={retry}
+                aria-label="Refresh memories"
+                title="Refresh memories"
+                className="btn-secondary"
+              >
+                <RefreshIcon className="h-3.5 w-3.5" />
+                <span className="hidden sm:inline">Refresh</span>
+              </button>
+            </div>
           </div>
+
+          <div className="flex flex-wrap items-end gap-2">
+            <form
+              className="flex min-w-0 flex-1 items-center gap-1.5 sm:max-w-md"
+              onSubmit={(event) => {
+                event.preventDefault()
+                applySearch()
+              }}
+            >
+              <label htmlFor="memory-search" className="sr-only">
+                Search memories
+              </label>
+              <input
+                id="memory-search"
+                aria-label="Search memories"
+                value={searchInput}
+                onChange={(event) => setSearchInput(event.target.value)}
+                placeholder="Search title, content, context"
+                className="field min-w-0 flex-1"
+              />
+              <button type="submit" aria-label="Apply search" className="btn-compact">
+                Apply
+              </button>
+            </form>
+
+            <form
+              className="flex flex-wrap items-end gap-1.5"
+              onSubmit={(event) => {
+                event.preventDefault()
+                applyUpdatedRange()
+              }}
+            >
+              <div>
+                <label
+                  htmlFor="updated-from-filter"
+                  className="mb-0.5 block text-[10px] font-medium uppercase tracking-wide text-muted"
+                >
+                  Updated from
+                </label>
+                <input
+                  id="updated-from-filter"
+                  aria-label="Updated from"
+                  type="datetime-local"
+                  value={updatedFromInput}
+                  onChange={(event) => setUpdatedFromInput(event.target.value)}
+                  className="field"
+                />
+              </div>
+              <div>
+                <label
+                  htmlFor="updated-to-filter"
+                  className="mb-0.5 block text-[10px] font-medium uppercase tracking-wide text-muted"
+                >
+                  Updated to
+                </label>
+                <input
+                  id="updated-to-filter"
+                  aria-label="Updated to"
+                  type="datetime-local"
+                  value={updatedToInput}
+                  onChange={(event) => setUpdatedToInput(event.target.value)}
+                  className="field"
+                />
+              </div>
+              <button type="submit" aria-label="Apply updated range" className="btn-compact">
+                Apply
+              </button>
+            </form>
+          </div>
+          {rangeError && (
+            <p className="text-[11px] text-copper" role="alert">
+              {rangeError}
+            </p>
+          )}
         </div>
 
         {listState.status === 'loading' && <LoadingRows />}
@@ -624,7 +834,11 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
 
         {emptyState === 'filter-empty' && (
           <EmptyPanel title="No memories found">
-            {route.importanceMin !== null ? (
+            {route.importanceMin !== null ||
+            route.importanceMax !== null ||
+            route.q !== null ||
+            route.updatedFrom !== null ||
+            route.updatedTo !== null ? (
               <p>
                 No memories match the current filters.{' '}
                 <a href={clearFiltersHref()} className="font-medium text-teal hover:underline">
@@ -659,8 +873,22 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
               <table className="w-full table-fixed border-collapse" aria-label="Memories">
                 <thead>
                   <tr className="border-b border-line bg-canvas/70 text-left">
-                    <th className="th-label memory-col px-3 sm:px-4">Memory</th>
-                    <th className="th-label project-col hidden md:table-cell">Project</th>
+                    <SortHeader
+                      label="Memory"
+                      shortLabel="Mem."
+                      column="title"
+                      route={route}
+                      onSort={handleSort}
+                      className="th-label memory-col px-3 sm:px-4"
+                    />
+                    <SortHeader
+                      label="Project"
+                      shortLabel="Proj."
+                      column="project_name"
+                      route={route}
+                      onSort={handleSort}
+                      className="th-label project-col hidden md:table-cell"
+                    />
                     <SortHeader
                       label="Importance"
                       shortLabel="Imp."

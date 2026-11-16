@@ -6,13 +6,20 @@ import {
   normalizeHiddenGraphNodeTypes,
 } from './lib/graphStyle'
 
-export type MemorySortBy = 'updated_at' | 'importance'
+export type MemorySortBy = 'updated_at' | 'importance' | 'title' | 'project_name'
 export type MemorySortOrder = 'asc' | 'desc'
+
+const DEFAULT_MEMORY_SORT_BY: MemorySortBy = 'updated_at'
+const DEFAULT_MEMORY_SORT_ORDER: MemorySortOrder = 'desc'
 
 export interface MemoryQuery {
   sortBy: MemorySortBy
   sortOrder: MemorySortOrder
   importanceMin: number | null
+  importanceMax: number | null
+  q: string | null
+  updatedFrom: string | null
+  updatedTo: string | null
 }
 
 export interface MemoryRoute extends MemoryQuery {
@@ -124,15 +131,83 @@ function textParam(params: URLSearchParams, key: string): string | null {
   return value ? value : null
 }
 
+function memorySortFromUrl(value: string | null): MemorySortBy {
+  if (value === 'importance') return 'importance'
+  if (value === 'title') return 'title'
+  if (value === 'project') return 'project_name'
+  return DEFAULT_MEMORY_SORT_BY
+}
+
+function memorySortToUrl(sortBy: MemorySortBy): string | null {
+  if (sortBy === DEFAULT_MEMORY_SORT_BY) return null
+  if (sortBy === 'project_name') return 'project'
+  return sortBy
+}
+
+function optionalImportance(value: string | null): number | null {
+  const parsed = optionalPositiveInt(value)
+  return parsed !== null && parsed >= 1 && parsed <= 10 ? parsed : null
+}
+
+function optionalIsoDateTime(value: string | null): string | null {
+  if (value === null || value === '') return null
+  const trimmed = value.trim()
+  if (trimmed === '') return null
+  if (!/(?:[zZ]|[+-]\d{2}:\d{2})$/.test(trimmed)) return null
+  const parsed = new Date(trimmed)
+  if (Number.isNaN(parsed.getTime())) return null
+  return trimmed
+}
+
+function applyMemoryQuery(params: URLSearchParams, route: MemoryQuery): void {
+  route.sortBy = memorySortFromUrl(params.get('sort'))
+  route.sortOrder = params.get('order') === 'asc' ? 'asc' : DEFAULT_MEMORY_SORT_ORDER
+  route.importanceMin = optionalImportance(params.get('importance'))
+  route.importanceMax = optionalImportance(params.get('max'))
+  if (
+    route.importanceMin !== null &&
+    route.importanceMax !== null &&
+    route.importanceMin > route.importanceMax
+  ) {
+    route.importanceMax = null
+  }
+  const q = params.get('q')
+  route.q = q === null || q === '' ? null : q
+  route.updatedFrom = optionalIsoDateTime(params.get('from'))
+  route.updatedTo = optionalIsoDateTime(params.get('to'))
+  if (
+    route.updatedFrom !== null &&
+    route.updatedTo !== null &&
+    new Date(route.updatedFrom).getTime() > new Date(route.updatedTo).getTime()
+  ) {
+    route.updatedTo = null
+  }
+}
+
+function memoryListQueryValues(
+  params: Partial<MemoryQuery> & { page?: number; projectId?: number | null },
+): Record<string, string | number | null> {
+  const sortBy = params.sortBy ?? DEFAULT_MEMORY_SORT_BY
+  const sortOrder = params.sortOrder ?? DEFAULT_MEMORY_SORT_ORDER
+  const page = params.page ?? 1
+  return {
+    page: page > 1 ? page : null,
+    sort: memorySortToUrl(sortBy),
+    order: sortOrder === 'asc' ? 'asc' : null,
+    project: params.projectId ?? null,
+    importance: params.importanceMin ?? null,
+    max: params.importanceMax ?? null,
+    q: params.q ?? null,
+    from: params.updatedFrom ?? null,
+    to: params.updatedTo ?? null,
+  }
+}
+
 function parseQuery(query: string, route: MemoryRoute | GraphRoute): void {
   const params = new URLSearchParams(query)
   route.page = positiveInt(params.get('page'), 1)
   route.projectId = optionalPositiveInt(params.get('project'))
-  route.sortBy = params.get('sort') === 'importance' ? 'importance' : 'updated_at'
-  route.sortOrder = params.get('order') === 'asc' ? 'asc' : 'desc'
-  const importanceMin = optionalPositiveInt(params.get('importance'))
-  route.importanceMin =
-    importanceMin !== null && importanceMin >= 1 && importanceMin <= 10 ? importanceMin : null
+  applyMemoryQuery(params, route)
   if (route.kind === 'graph') {
     const depth = positiveInt(params.get('depth'), 1)
     route.depth = Math.min(depth, 3)
@@ -147,9 +222,13 @@ export function parseRoute(hash: string): AppRoute {
       memoryId: null,
       page: 1,
       projectId: null,
-      sortBy: 'updated_at',
-      sortOrder: 'desc',
+      sortBy: DEFAULT_MEMORY_SORT_BY,
+      sortOrder: DEFAULT_MEMORY_SORT_ORDER,
       importanceMin: null,
+      importanceMax: null,
+      q: null,
+      updatedFrom: null,
+      updatedTo: null,
     }
   }
 
@@ -163,9 +242,13 @@ export function parseRoute(hash: string): AppRoute {
       memoryId: segments[1] ? optionalPositiveInt(segments[1]) : null,
       page: 1,
       projectId: null,
-      sortBy: 'updated_at',
-      sortOrder: 'desc',
+      sortBy: DEFAULT_MEMORY_SORT_BY,
+      sortOrder: DEFAULT_MEMORY_SORT_ORDER,
       importanceMin: null,
+      importanceMax: null,
+      q: null,
+      updatedFrom: null,
+      updatedTo: null,
     }
     parseQuery(query, route)
     return route
@@ -183,9 +266,13 @@ export function parseRoute(hash: string): AppRoute {
       hiddenNodeTypes: normalizeHiddenGraphNodeTypes(
         (params.get('hide') ?? '').split(',').filter(Boolean),
       ),
-      sortBy: 'updated_at',
-      sortOrder: 'desc',
+      sortBy: DEFAULT_MEMORY_SORT_BY,
+      sortOrder: DEFAULT_MEMORY_SORT_ORDER,
       importanceMin: null,
+      importanceMax: null,
+      q: null,
+      updatedFrom: null,
+      updatedTo: null,
     }
     parseQuery(query, route)
     return route
@@ -285,18 +372,13 @@ export function memoriesHref(params: {
   sortBy?: MemorySortBy
   sortOrder?: MemorySortOrder
   importanceMin?: number | null
+  importanceMax?: number | null
+  q?: string | null
+  updatedFrom?: string | null
+  updatedTo?: string | null
 }): string {
   const memoryId = params.memoryId ?? null
-  const page = params.page ?? 1
-  const sortBy = params.sortBy ?? 'updated_at'
-  const sortOrder = params.sortOrder ?? 'desc'
-  const query = queryString({
-    page: page > 1 ? page : null,
-    sort: sortBy === 'importance' ? sortBy : null,
-    order: sortOrder === 'asc' ? 'asc' : null,
-    project: params.projectId ?? null,
-    importance: params.importanceMin ?? null,
-  })
+  const query = queryString(memoryListQueryValues(params))
   return memoryId === null ? `#/memories${query}` : `#/memories/${memoryId}${query}`
 }
 
@@ -310,11 +392,12 @@ export function graphHref(params: {
   sortBy?: MemorySortBy
   sortOrder?: MemorySortOrder
   importanceMin?: number | null
+  importanceMax?: number | null
+  q?: string | null
+  updatedFrom?: string | null
+  updatedTo?: string | null
 }): string {
   const depth = params.depth ?? 1
-  const page = params.page ?? 1
-  const sortBy = params.sortBy ?? 'updated_at'
-  const sortOrder = params.sortOrder ?? 'desc'
   const nodeTypes = normalizeGraphNodeTypes(params.nodeTypes ?? [])
   const defaultTypes =
     nodeTypes.length === CORE_GRAPH_NODE_TYPES.length &&
@@ -322,13 +405,9 @@ export function graphHref(params: {
   const query = queryString({
     memory: params.memoryId ?? null,
     depth: depth > 1 ? depth : null,
-    page: page > 1 ? page : null,
-    sort: sortBy === 'importance' ? sortBy : null,
-    order: sortOrder === 'asc' ? 'asc' : null,
-    project: params.projectId ?? null,
+    ...memoryListQueryValues(params),
     types: defaultTypes ? null : nodeTypes.join(','),
     hide: normalizeHiddenGraphNodeTypes(params.hiddenNodeTypes ?? []).join(','),
-    importance: params.importanceMin ?? null,
   })
   return `#/graph${query}`
 }

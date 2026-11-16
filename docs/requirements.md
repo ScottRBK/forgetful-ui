@@ -42,11 +42,10 @@ seed, reset, or migrate the connected database.
 - Show paginated results from the API. Do not download every memory to paginate in the browser.
 - Fetch full details when a memory is selected.
 - Support filtering by project using the API.
-- Support the list options the current API actually provides: minimum importance filtering and
-  sorting by updated time or importance, in either direction.
-- Defer title/project sorting, text search, and date filtering to the backend enhancement in
-  [Forgetful issue #214](https://github.com/ScottRBK/forgetful/issues/214).
-  Do not change the backend or rebuild its Docker image for this iteration. Tag filtering and
+- Support the list options shipped in
+  [Forgetful issue #214](https://github.com/ScottRBK/forgetful/issues/214): minimum and maximum
+  importance filtering, literal substring search (`q`), inclusive updated-at range, and sorting by
+  updated time, importance, title, or project name, in either direction. Tag filtering and
   obsolete-record visibility are not exposed in this iteration.
 - Use bounded numbered pagination with first/last and nearby pages. Keep filters and sorting in
   the route and reset to page 1 when they change.

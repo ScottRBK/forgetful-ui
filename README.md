@@ -68,7 +68,7 @@ The app uses hash routing:
 
 - `#/dashboard`
 - `#/memories`
-- `#/memories/<id>?page=<n>&project=<id>&sort=...&order=...&importance=...`
+- `#/memories/<id>?page=<n>&project=<id>&sort=...&order=...&importance=...&max=...&q=...&from=...&to=...`
 - `#/graph?project=<id>&types=<comma-separated>&hide=<memory,project>`
 - `#/graph?memory=<id>&depth=<1-3>`
 - `#/projects/<id>?status=...&repo=...`
@@ -100,10 +100,11 @@ use the unprefixed `/api/v1` path.
 
 - A page has 20 memories. The list uses the server `total`; it does not download everything.
 - Numbered pagination shows first/last and nearby pages with ellipses. Previous/next remain.
-- The list supports only server-backed controls: project filter, minimum importance filter, and
-  sorting by Updated or Importance in either direction. Title/project sorting, text search, and
-  date filtering wait for backend support. Tag and obsolete filters are not exposed in this
-  iteration; the UI does not fake unsupported controls.
+- The list uses server-backed controls from Forgetful #214: project filter, minimum and maximum
+  importance filters, text search (`q`), inclusive updated-at range (`from`/`to` in the URL,
+  `updated_from`/`updated_to` on the API), and sorting by Updated, Importance, Memory title, or
+  Project name in either direction (`sort=project` maps to `project_name`). Tag and obsolete filters
+  are not exposed in this iteration; the UI does not fake unsupported controls.
 - A project is selected from the separate project list. The project endpoint is not paginated.
 - Memories, Projects, Documents, Code, Files, and Skills have resizable wide-screen detail panes
   with pointer or keyboard control (Arrow keys, Home/End), bounded widths, and Expand/Restore.
@@ -182,7 +183,8 @@ use the unprefixed `/api/v1` path.
   stops loading records and explains why.
 - There is no persistent cache, offline mode, write operation, voice interaction, live SSE,
   file preview/download, or full-record graph preload.
-- Title/project memory sorting and text/date memory filters remain deferred to issue #214.
+- Tag and obsolete memory list filters remain out of scope; sorting and filtering from #214 (except
+  tags and `include_obsolete`) are available when the connected Forgetful instance supports them.
 - Development and preview use the Vite proxy. A production static deployment uses the API on
   its own origin and deployment prefix.
 
