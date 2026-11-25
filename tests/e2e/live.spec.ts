@@ -47,6 +47,7 @@ test('reads the available remaining pages without mutations', async ({ page }) =
     limit: number
     has_more: boolean
   }[] = []
+  const projectPages: { total: number; limit: number; offset: number }[] = []
   page.on('response', (response) => {
     const url = new URL(response.url())
     if (url.pathname !== '/api/v1/graph') return
@@ -70,6 +71,23 @@ test('reads the available remaining pages without mutations', async ({ page }) =
             limit: value.limit,
             has_more: value.has_more,
           })
+        }
+      })
+      .catch(() => undefined)
+  })
+  page.on('response', (response) => {
+    const url = new URL(response.url())
+    if (url.pathname !== '/api/v1/projects') return
+    response
+      .json()
+      .then((body: unknown) => {
+        const value = body as { total?: unknown; limit?: unknown; offset?: unknown }
+        if (
+          typeof value.total === 'number' &&
+          typeof value.limit === 'number' &&
+          typeof value.offset === 'number'
+        ) {
+          projectPages.push({ total: value.total, limit: value.limit, offset: value.offset })
         }
       })
       .catch(() => undefined)
@@ -165,6 +183,18 @@ test('reads the available remaining pages without mutations', async ({ page }) =
       .getByRole('list', { name: 'Projects' })
       .or(page.getByText('No projects found', { exact: true })),
   ).toBeVisible({ timeout: 15_000 })
+  const projectListRequests = requests.filter(
+    (url) => url.pathname === '/api/v1/projects' && url.searchParams.get('limit') === '20',
+  )
+  expect(projectListRequests.length).toBeGreaterThan(0)
+  expect(projectListRequests.every((url) => url.searchParams.get('offset') !== null)).toBe(true)
+  await expect
+    .poll(() => projectPages.filter((page) => page.limit === 20).length)
+    .toBeGreaterThan(0)
+  const projectPage = projectPages.find((page) => page.limit === 20)
+  if (!projectPage) throw new Error('Project page metadata was not returned')
+  expect(projectPage.total).toBeGreaterThanOrEqual(0)
+  expect(projectPage.offset).toBe(0)
   const projectLink = page.getByRole('list', { name: 'Projects' }).getByRole('link').first()
   if ((await projectLink.count()) > 0) {
     await projectLink.click()

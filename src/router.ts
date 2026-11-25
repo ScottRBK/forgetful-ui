@@ -44,6 +44,7 @@ export interface DashboardRoute {
 }
 
 export interface ProjectsRoute {
+  page: number
   kind: 'projects'
   projectId: number | null
   status: string | null
@@ -51,6 +52,7 @@ export interface ProjectsRoute {
 }
 
 export interface PlansRoute {
+  page: number
   kind: 'plans'
   planId: number | null
   taskId: number | null
@@ -59,6 +61,7 @@ export interface PlansRoute {
 }
 
 export interface DocumentsRoute {
+  page: number
   kind: 'documents'
   documentId: number | null
   projectId: number | null
@@ -66,6 +69,7 @@ export interface DocumentsRoute {
 }
 
 export interface CodeRoute {
+  page: number
   kind: 'code'
   artifactId: number | null
   projectId: number | null
@@ -73,6 +77,7 @@ export interface CodeRoute {
 }
 
 export interface FilesRoute {
+  page: number
   kind: 'files'
   fileId: number | null
   projectId: number | null
@@ -80,6 +85,7 @@ export interface FilesRoute {
 }
 
 export interface SkillsRoute {
+  page: number
   kind: 'skills'
   skillId: number | null
   projectId: number | null
@@ -294,6 +300,7 @@ export function parseRoute(hash: string): AppRoute {
     const params = paramsOf(query)
     return {
       kind: 'projects',
+      page: positiveInt(params.get('page'), 1),
       projectId: segments[1] ? optionalPositiveInt(segments[1]) : null,
       status: textParam(params, 'status'),
       repoName: textParam(params, 'repo'),
@@ -304,6 +311,7 @@ export function parseRoute(hash: string): AppRoute {
     const params = paramsOf(query)
     return {
       kind: 'plans',
+      page: positiveInt(params.get('page'), 1),
       planId: segments[1] ? optionalPositiveInt(segments[1]) : null,
       taskId: optionalPositiveInt(params.get('task')),
       projectId: optionalPositiveInt(params.get('project')),
@@ -315,6 +323,7 @@ export function parseRoute(hash: string): AppRoute {
     const params = paramsOf(query)
     return {
       kind: 'documents',
+      page: positiveInt(params.get('page'), 1),
       documentId: segments[1] ? optionalPositiveInt(segments[1]) : null,
       projectId: optionalPositiveInt(params.get('project')),
       documentType: textParam(params, 'type'),
@@ -325,6 +334,7 @@ export function parseRoute(hash: string): AppRoute {
     const params = paramsOf(query)
     return {
       kind: 'code',
+      page: positiveInt(params.get('page'), 1),
       artifactId: segments[1] ? optionalPositiveInt(segments[1]) : null,
       projectId: optionalPositiveInt(params.get('project')),
       language: textParam(params, 'language'),
@@ -335,6 +345,7 @@ export function parseRoute(hash: string): AppRoute {
     const params = paramsOf(query)
     return {
       kind: 'files',
+      page: positiveInt(params.get('page'), 1),
       fileId: segments[1] ? optionalPositiveInt(segments[1]) : null,
       projectId: optionalPositiveInt(params.get('project')),
       mimeType: textParam(params, 'mime'),
@@ -345,6 +356,7 @@ export function parseRoute(hash: string): AppRoute {
     const params = paramsOf(query)
     return {
       kind: 'skills',
+      page: positiveInt(params.get('page'), 1),
       skillId: segments[1] ? optionalPositiveInt(segments[1]) : null,
       projectId: optionalPositiveInt(params.get('project')),
       importanceMin: optionalPositiveInt(params.get('importance')),
@@ -436,10 +448,13 @@ export function dashboardHref(): string {
 
 export function projectsHref(params: {
   projectId?: number | null
+  page?: number
   status?: string | null
   repoName?: string | null
 }): string {
+  const page = params.page ?? 1
   const query = queryString({
+    page: page > 1 ? page : null,
     status: params.status ?? null,
     repo: params.repoName ?? null,
   })
@@ -450,12 +465,15 @@ export function projectsHref(params: {
 export function plansHref(params: {
   planId?: number | null
   taskId?: number | null
+  page?: number
   projectId?: number | null
   status?: string | null
 }): string {
   const planId = params.planId ?? null
+  const page = params.page ?? 1
   const query = queryString({
     task: planId !== null ? (params.taskId ?? null) : null,
+    page: page > 1 ? page : null,
     project: params.projectId ?? null,
     status: params.status ?? null,
   })
@@ -464,11 +482,14 @@ export function plansHref(params: {
 
 export function documentsHref(params: {
   documentId?: number | null
+  page?: number
   projectId?: number | null
   documentType?: string | null
 }): string {
   const documentId = params.documentId ?? null
+  const page = params.page ?? 1
   const query = queryString({
+    page: page > 1 ? page : null,
     project: params.projectId ?? null,
     type: params.documentType ?? null,
   })
@@ -477,11 +498,14 @@ export function documentsHref(params: {
 
 export function codeHref(params: {
   artifactId?: number | null
+  page?: number
   projectId?: number | null
   language?: string | null
 }): string {
   const artifactId = params.artifactId ?? null
+  const page = params.page ?? 1
   const query = queryString({
+    page: page > 1 ? page : null,
     project: params.projectId ?? null,
     language: params.language ?? null,
   })
@@ -490,11 +514,14 @@ export function codeHref(params: {
 
 export function filesHref(params: {
   fileId?: number | null
+  page?: number
   projectId?: number | null
   mimeType?: string | null
 }): string {
   const fileId = params.fileId ?? null
+  const page = params.page ?? 1
   const query = queryString({
+    page: page > 1 ? page : null,
     project: params.projectId ?? null,
     mime: params.mimeType ?? null,
   })
@@ -503,11 +530,14 @@ export function filesHref(params: {
 
 export function skillsHref(params: {
   skillId?: number | null
+  page?: number
   projectId?: number | null
   importanceMin?: number | null
 }): string {
   const skillId = params.skillId ?? null
+  const page = params.page ?? 1
   const query = queryString({
+    page: page > 1 ? page : null,
     project: params.projectId ?? null,
     importance: params.importanceMin ?? null,
   })

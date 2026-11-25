@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ApiError, getMemory, isAbortError, listMemories, listProjects } from '../api/client'
+import { ApiError, getMemory, isAbortError, listMemories } from '../api/client'
 import type { MemoryRecord, ProjectRecord } from '../api/types'
 import { EmptyPanel, ErrorPanel, LoadingRows } from '../components/Feedback'
 import { ArrowLeftIcon, ArrowRightIcon, ExternalIcon, RefreshIcon } from '../components/Icons'
+import { useProjectOptions } from '../hooks/useProjectOptions'
 import { useResizablePane } from '../hooks/useResizablePane'
 import { formatDate, formatShortDate, pluralMemories, safeHttpUrl } from '../lib/format'
 import {
@@ -41,11 +42,6 @@ type SelectionContext = Pick<
   | 'updatedFrom'
   | 'updatedTo'
 >
-
-type ProjectState =
-  | { status: 'loading' }
-  | { status: 'ready'; projects: ProjectRecord[] }
-  | { status: 'error'; message: string }
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'The request failed.'
@@ -299,7 +295,7 @@ function SortHeader({
 export function MemoriesScreen({ route }: { route: MemoryRoute }) {
   const [listState, setListState] = useState<ListState>({ status: 'loading' })
   const [detailState, setDetailState] = useState<DetailState>({ status: 'idle' })
-  const [projectState, setProjectState] = useState<ProjectState>({ status: 'loading' })
+  const projectOptions = useProjectOptions()
   const [refreshToken, setRefreshToken] = useState(0)
   const [searchInput, setSearchInput] = useState(route.q ?? '')
   const [updatedFromInput, setUpdatedFromInput] = useState(
@@ -388,31 +384,6 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
     route.updatedTo,
     refreshToken,
   ])
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: refreshToken triggers a reload
-  useEffect(() => {
-    const controller = new AbortController()
-    let active = true
-
-    setProjectState({ status: 'loading' })
-    listProjects({ status: null, repoName: null }, controller.signal)
-      .then((response) => {
-        if (!active || controller.signal.aborted) return
-        setProjectState({
-          status: 'ready',
-          projects: Array.isArray(response.projects) ? response.projects : [],
-        })
-      })
-      .catch((error: unknown) => {
-        if (!active || controller.signal.aborted || isAbortError(error)) return
-        setProjectState({ status: 'error', message: errorMessage(error) })
-      })
-
-    return () => {
-      active = false
-      controller.abort()
-    }
-  }, [refreshToken])
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshToken triggers a reload
   useEffect(() => {
@@ -516,7 +487,7 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
     route.updatedTo,
   ])
 
-  const projects = projectState.status === 'ready' ? projectState.projects : []
+  const projects = projectOptions.state.status === 'ready' ? projectOptions.state.data.projects : []
   const projectNames = useMemo(
     () => new Map(projects.map((project) => [project.id, project.name])),
     [projects],
@@ -696,9 +667,17 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
               </a>
             )}
 
-            {projectState.status === 'error' && (
-              <span className="text-[10px] text-copper" title={projectState.message}>
-                Project filter unavailable
+            {projectOptions.state.status === 'error' && (
+              <span className="inline-flex items-center gap-1.5 text-[10px] text-copper">
+                <span title={projectOptions.state.message}>Project filter unavailable</span>
+                <button
+                  type="button"
+                  onClick={projectOptions.retry}
+                  className="font-medium text-teal"
+                  aria-label="Retry project options"
+                >
+                  Retry
+                </button>
               </span>
             )}
 

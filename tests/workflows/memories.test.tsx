@@ -2,7 +2,7 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import App from '../../src/App'
-import { installFetchStub, jsonResponse } from '../helpers/fetchStub'
+import { installFetchStub, jsonResponse, pagedResponse } from '../helpers/fetchStub'
 import { memory, project } from '../helpers/synthetic'
 
 describe('Memories workflow', () => {
@@ -16,7 +16,7 @@ describe('Memories workflow', () => {
       },
       {
         match: '/api/v1/projects',
-        handler: () => jsonResponse({ projects: [project(7, 'Synthetic project')], total: 1 }),
+        handler: (request) => pagedResponse([project(7, 'Synthetic project')], request, 'projects'),
       },
       {
         match: '/api/v1/memories',
@@ -55,11 +55,12 @@ describe('Memories filtering and pagination', () => {
       },
       {
         match: '/api/v1/projects',
-        handler: () =>
-          jsonResponse({
-            projects: [project(7, 'Alpha project'), project(9, 'Beta project')],
-            total: 2,
-          }),
+        handler: (request) =>
+          pagedResponse(
+            [project(7, 'Alpha project'), project(9, 'Beta project')],
+            request,
+            'projects',
+          ),
       },
       {
         match: '/api/v1/memories',
@@ -117,7 +118,7 @@ describe('Route context', () => {
       },
       {
         match: '/api/v1/projects',
-        handler: () => jsonResponse({ projects: [project(1, 'First project')], total: 1 }),
+        handler: (request) => pagedResponse([project(1, 'First project')], request, 'projects'),
       },
       {
         match: '/api/v1/memories',
@@ -163,7 +164,7 @@ describe('Application shell', () => {
       },
       {
         match: '/api/v1/projects',
-        handler: () => jsonResponse({ projects: [], total: 0 }),
+        handler: (request) => pagedResponse([], request, 'projects'),
       },
       {
         match: '/api/v1/memories',

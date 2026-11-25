@@ -2,11 +2,14 @@ import { useEffect, useState } from 'react'
 import { getFile, listFiles } from '../api/client'
 import { DetailField } from '../components/DetailField'
 import { EmptyPanel, ErrorPanel } from '../components/Feedback'
+import { OutOfRangePanel } from '../components/OutOfRangePanel'
+import { PaginationBar } from '../components/PaginationBar'
 import { ProjectSelect } from '../components/ProjectSelect'
 import { ResourceLayout } from '../components/ResourceLayout'
 import { useApiData } from '../hooks/useApiData'
 import { type CapabilityState, featureState } from '../hooks/useCapabilities'
 import { formatDate } from '../lib/format'
+import { RESOURCE_PAGE_SIZE, resourceOffset, resourceTotalPages } from '../lib/resourcePages'
 import type { FilesRoute } from '../router'
 import { filesHref, navigate } from '../router'
 
@@ -75,12 +78,24 @@ export default function FilesScreen({
   useEffect(() => setMimeInput(route.mimeType ?? ''), [route.mimeType])
   const files = featureState(capabilities, 'files')
   const canRead = files === 'enabled' || files === 'unknown'
+  const offset = resourceOffset(route.page, RESOURCE_PAGE_SIZE)
   const list = useApiData(
-    `files-${route.projectId ?? ''}-${route.mimeType ?? ''}`,
-    (signal) => listFiles({ projectId: route.projectId, mimeType: route.mimeType }, signal),
+    `files-${route.page}-${route.projectId ?? ''}-${route.mimeType ?? ''}`,
+    (signal) =>
+      listFiles(
+        {
+          projectId: route.projectId,
+          mimeType: route.mimeType,
+          limit: RESOURCE_PAGE_SIZE,
+          offset,
+        },
+        signal,
+      ),
     canRead,
   )
   const items = list.state.status === 'ready' ? list.state.data.files : []
+  const total = list.state.status === 'ready' ? list.state.data.total : 0
+  const totalPages = resourceTotalPages(total, RESOURCE_PAGE_SIZE)
 
   function update(params: { projectId?: number | null; mimeType?: string | null }) {
     navigate(
@@ -133,7 +148,11 @@ export default function FilesScreen({
         }
         detailTitle="File metadata"
         selectedId={route.fileId}
-        backHref={filesHref({ projectId: route.projectId, mimeType: route.mimeType })}
+        backHref={filesHref({
+          page: route.page,
+          projectId: route.projectId,
+          mimeType: route.mimeType,
+        })}
         list={
           <>
             <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2.5">
@@ -174,11 +193,28 @@ export default function FilesScreen({
                 onRetry={list.retry}
               />
             )}
-            {list.state.status === 'ready' && items.length === 0 && (
-              <EmptyPanel title="No files found">
-                <p>Try a different project or MIME type.</p>
-              </EmptyPanel>
-            )}
+            {list.state.status === 'ready' &&
+              items.length === 0 &&
+              (total > 0 ? (
+                <OutOfRangePanel
+                  page={route.page}
+                  totalPages={totalPages}
+                  itemName="files"
+                  firstHref={filesHref({
+                    projectId: route.projectId,
+                    mimeType: route.mimeType,
+                  })}
+                  lastHref={filesHref({
+                    page: totalPages,
+                    projectId: route.projectId,
+                    mimeType: route.mimeType,
+                  })}
+                />
+              ) : (
+                <EmptyPanel title="No files found">
+                  <p>Try a different project or MIME type.</p>
+                </EmptyPanel>
+              ))}
             {items.length > 0 && (
               <ul aria-label="Files" className="divide-y divide-line">
                 {items.map((file) => (
@@ -186,6 +222,7 @@ export default function FilesScreen({
                     <a
                       href={filesHref({
                         fileId: file.id,
+                        page: route.page,
                         projectId: route.projectId,
                         mimeType: route.mimeType,
                       })}
@@ -207,6 +244,23 @@ export default function FilesScreen({
                   </li>
                 ))}
               </ul>
+            )}
+            {items.length > 0 && (
+              <PaginationBar
+                page={route.page}
+                totalPages={totalPages}
+                total={total}
+                limit={RESOURCE_PAGE_SIZE}
+                received={items.length}
+                label="File"
+                hrefForPage={(page) =>
+                  filesHref({
+                    page,
+                    projectId: route.projectId,
+                    mimeType: route.mimeType,
+                  })
+                }
+              />
             )}
           </>
         }

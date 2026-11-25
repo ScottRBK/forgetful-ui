@@ -1,6 +1,5 @@
-import { listProjects } from '../api/client'
 import type { ProjectRecord } from '../api/types'
-import { useApiData } from '../hooks/useApiData'
+import { useProjectOptions } from '../hooks/useProjectOptions'
 
 interface ProjectSelectViewProps {
   value: number | null
@@ -73,9 +72,7 @@ interface ProjectSelectProps {
 }
 
 export function ProjectSelect({ value, onChange }: ProjectSelectProps) {
-  const { state, retry } = useApiData('project-options', (signal) =>
-    listProjects({ status: null, repoName: null }, signal),
-  )
+  const { state, retry } = useProjectOptions()
   return (
     <ProjectSelectView
       value={value}

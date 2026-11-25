@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react'
 import { getCodeArtifact, listCodeArtifacts } from '../api/client'
 import { DetailField } from '../components/DetailField'
 import { EmptyPanel, ErrorPanel } from '../components/Feedback'
+import { OutOfRangePanel } from '../components/OutOfRangePanel'
+import { PaginationBar } from '../components/PaginationBar'
 import { ProjectSelect } from '../components/ProjectSelect'
 import { ResourceLayout } from '../components/ResourceLayout'
 import { useApiData } from '../hooks/useApiData'
 import { formatDate } from '../lib/format'
+import { RESOURCE_PAGE_SIZE, resourceOffset, resourceTotalPages } from '../lib/resourcePages'
 import type { CodeRoute } from '../router'
 import { codeHref, navigate } from '../router'
 
@@ -62,10 +65,23 @@ function CodeDetail({ artifactId }: { artifactId: number }) {
 export default function CodeScreen({ route }: { route: CodeRoute }) {
   const [languageInput, setLanguageInput] = useState(route.language ?? '')
   useEffect(() => setLanguageInput(route.language ?? ''), [route.language])
-  const list = useApiData(`code-list-${route.projectId ?? ''}-${route.language ?? ''}`, (signal) =>
-    listCodeArtifacts({ projectId: route.projectId, language: route.language }, signal),
+  const offset = resourceOffset(route.page, RESOURCE_PAGE_SIZE)
+  const list = useApiData(
+    `code-list-${route.page}-${route.projectId ?? ''}-${route.language ?? ''}`,
+    (signal) =>
+      listCodeArtifacts(
+        {
+          projectId: route.projectId,
+          language: route.language,
+          limit: RESOURCE_PAGE_SIZE,
+          offset,
+        },
+        signal,
+      ),
   )
   const artifacts = list.state.status === 'ready' ? list.state.data.code_artifacts : []
+  const total = list.state.status === 'ready' ? list.state.data.total : 0
+  const totalPages = resourceTotalPages(total, RESOURCE_PAGE_SIZE)
 
   function update(params: { projectId?: number | null; language?: string | null }) {
     navigate(
@@ -88,7 +104,11 @@ export default function CodeScreen({ route }: { route: CodeRoute }) {
       }
       detailTitle="Code detail"
       selectedId={route.artifactId}
-      backHref={codeHref({ projectId: route.projectId, language: route.language })}
+      backHref={codeHref({
+        page: route.page,
+        projectId: route.projectId,
+        language: route.language,
+      })}
       list={
         <>
           <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2.5">
@@ -129,11 +149,28 @@ export default function CodeScreen({ route }: { route: CodeRoute }) {
               onRetry={list.retry}
             />
           )}
-          {list.state.status === 'ready' && artifacts.length === 0 && (
-            <EmptyPanel title="No code artifacts found">
-              <p>Try a different project or language.</p>
-            </EmptyPanel>
-          )}
+          {list.state.status === 'ready' &&
+            artifacts.length === 0 &&
+            (total > 0 ? (
+              <OutOfRangePanel
+                page={route.page}
+                totalPages={totalPages}
+                itemName="code artifacts"
+                firstHref={codeHref({
+                  projectId: route.projectId,
+                  language: route.language,
+                })}
+                lastHref={codeHref({
+                  page: totalPages,
+                  projectId: route.projectId,
+                  language: route.language,
+                })}
+              />
+            ) : (
+              <EmptyPanel title="No code artifacts found">
+                <p>Try a different project or language.</p>
+              </EmptyPanel>
+            ))}
           {artifacts.length > 0 && (
             <ul aria-label="Code artifacts" className="divide-y divide-line">
               {artifacts.map((artifact) => (
@@ -141,6 +178,7 @@ export default function CodeScreen({ route }: { route: CodeRoute }) {
                   <a
                     href={codeHref({
                       artifactId: artifact.id,
+                      page: route.page,
                       projectId: route.projectId,
                       language: route.language,
                     })}
@@ -162,6 +200,23 @@ export default function CodeScreen({ route }: { route: CodeRoute }) {
                 </li>
               ))}
             </ul>
+          )}
+          {artifacts.length > 0 && (
+            <PaginationBar
+              page={route.page}
+              totalPages={totalPages}
+              total={total}
+              limit={RESOURCE_PAGE_SIZE}
+              received={artifacts.length}
+              label="Code artifact"
+              hrefForPage={(page) =>
+                codeHref({
+                  page,
+                  projectId: route.projectId,
+                  language: route.language,
+                })
+              }
+            />
           )}
         </>
       }

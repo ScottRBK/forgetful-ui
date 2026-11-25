@@ -1,7 +1,11 @@
 # Forgetful UI prototype requirements
 
-Status: The read-only pages are implemented, including the Plan Kanban board. Login and Sessions
-remain deferred. Use npm and the test tools listed under Validation.
+Status: The read-only pages are implemented, including the Plan Kanban board and bounded list
+pagination. Login and Sessions remain deferred. Use npm and the test tools listed under Validation.
+
+Minimum supported backend: Forgetful v0.8.0. The seven resource list endpoints return bounded
+pages and paging metadata from that release. Older responses without metadata are rejected; the
+UI does not guess a complete collection from them.
 
 ## Agreed decisions
 
@@ -127,16 +131,19 @@ Build these pages in the existing visual style, one working and tested slice at 
 
 - Dashboard: connection and feature status, recent memories, and recent activity. Use actual API
   totals where available. Do not fetch every resource list just to populate count cards.
-- Projects: summaries, supported status/repository filters, and full project details. Link to the
-  project's Memories view.
-- Plans: summaries with supported project/status filters. Selecting a plan opens its full-page
-  Kanban board, with task details available on selection. See the approved board scope below.
-- Documents: summaries, supported project/type filters, and full document content on selection.
-- Code: summaries, supported project/language filters, and readable source on selection.
-- Files: summaries, supported project/MIME-type filters, and selected-file metadata. Do not execute
-  or automatically preview file content. Uploads and file editing are outside this delivery.
-- Skills: summaries, supported project/minimum-importance filters, and full skill content and
-  available association metadata on selection.
+- Projects: bounded summaries, supported status/repository filters, and full project details.
+  Link to the project's Memories view.
+- Plans: bounded summaries with supported project/status filters. Selecting a plan opens its
+  full-page Kanban board, with task details available on selection. See the approved board scope
+  below.
+- Documents: bounded summaries, supported project/type filters, and full document content on
+  selection.
+- Code: bounded summaries, supported project/language filters, and readable source on selection.
+- Files: bounded summaries, supported project/MIME-type filters, and selected-file metadata. Do
+  not execute or automatically preview file content. Uploads and file editing are outside this
+  delivery.
+- Skills: bounded summaries, supported project/minimum-importance filters, and full skill content
+  and available association metadata on selection.
 - Timeline: server-paginated activity history, supported filters, and expandable event details.
   Distinguish historical snapshots from the current record. No live stream is required.
 
@@ -151,7 +158,9 @@ Memories behaviour and the focused Graph workflow must remain intact.
 
 - Selecting a plan replaces the Plans list with a full-page board for that plan.
 - Keep the existing plan and task hash links. Back to plans restores the list's project/status
-  filters. Direct links, reload, and browser Back/Forward must work.
+  filters and page. Direct links, reload, and browser Back/Forward must work.
+- Collect every task summary page for the selected plan before presenting a new complete board.
+  Do not split only the first page into columns or label a partial set as the whole plan.
 - Show the plan name, actual owning project name, status, and goal above the board. Retain access
   to the plan's context and metadata rather than dropping existing details.
 - Use the existing task states, in order: To do, Doing, Waiting, Done, Cancelled. Keep empty
@@ -173,19 +182,52 @@ Memories behaviour and the focused Graph workflow must remain intact.
 - Preserve optional-feature and access-denial handling. No backend changes or new dependencies
   are needed for this board.
 
-### Prototype-only list exception
+### Resource list pagination
 
-The user approved using the current unpaginated summary responses for Projects, Plans, Documents,
-Code, Files, and Skills in this prototype only. Tasks are loaded for the selected plan, not across
-all plans. Load a list when its page opens; do not preload all lists at startup or fetch each listed
-record's full content. Keep filters on the server where supported. Do not invent paging parameters
-or display page controls that suggest the server has returned a bounded page.
+Forgetful v0.8.0 bounds the seven REST resource lists: Projects, Plans, Tasks, Documents, Code
+Artifacts, Files, and Skills. Their defaults are `limit=20` and `offset=0`; `limit` is 1–100.
+Each response keeps its resource array and returns the filtered `total` plus the requested `limit`
+and `offset`. Tasks require `plan_id` and stay scoped to that plan. Other collections order by
+`created_at DESC, id DESC`; Tasks order by `created_at ASC, id ASC`. The list projection excludes
+full content; fetch one record when it is selected. Separate page requests are not a transaction:
+concurrent changes can shift offsets, so a client that needs a consistent collection must reload
+when it detects a change. Ordinary page navigation may legitimately observe a different total
+between pages; whole-collection consistency checks apply only to collections assembled in one run,
+such as project filter options and a plan board's task summaries.
 
-Track server pagination for these lists, including tasks, in
-[Forgetful issue #215](https://github.com/ScottRBK/forgetful/issues/215).
-Replace this exception with bounded server requests before integrating these lists into the main
-Forgetful UI. The exception does not apply to Memories, Timeline, or graph requests, which already
-have server limits. Do not change the backend or rebuild/deploy Docker for this prototype delivery.
+- Each ordinary list screen sends its own bounded `limit`/`offset`, renders the server total with
+  numbered first/last and nearby page controls, and reports the visible range from the rows actually
+  received on that page and the server total, not from `page × limit`. It does not download a whole
+  collection to paginate. A later-page or metadata failure is an error with Retry, not an empty
+  success. An out-of-range page offers first/last recovery.
+- An ordinary page requires a non-negative safe-integer `total`, matching `limit`/`offset`, the
+  expected collection array, and no more rows than the requested limit. A missing `total`, `limit`,
+  or `offset` names the v0.8.0 requirement; other inconsistencies are rejected without claiming an
+  old backend. A legitimately empty page beyond the total is not an error.
+- Filter changes reset the list to page 1. Selection, reload, history, and returning from a plan
+  board keep the current page and filters in the hash.
+- Project filter options are summary records collected on demand from sequential bounded pages,
+  including when there are more than 100 projects. Do not preload every list at startup, fetch each
+  project's full detail, or keep only a partial option set. Cancel stale collections and stop
+  offering retry after a 401/403 denial. An explicitly disabled feature makes no option or resource
+  requests. A selected project outside the first page keeps its name. The option list loads when a
+  screen needing it opens; a browser reload or another visit loads it again. Ordinary paging,
+  filter, or selection changes do not refetch it, and Memories Refresh does not refetch options.
+- Missing paging metadata (total, limit, or offset) is rejected with an actionable message naming
+  the v0.8.0 requirement. Invalid values, a missing collection array, or too many rows for the
+  requested limit are rejected as other inconsistencies without being described as an old backend.
+  Do not fall back to a legacy complete collection.
+- A board needs every task summary page for its plan. Validate metadata and record IDs, and require
+  finite progress. Reject duplicate, repeated, empty, or non-progressing pages, changed totals,
+  wrong offsets, and malformed records. Do not impose an arbitrary page or total ceiling and do not
+  retry automatically to hide an inconsistent collection. Retry starts again from the first page.
+  While a manual refresh is pending or has failed, keep the last complete board visible and label
+  it as previous data.
+- Resolve the board's project name with one `GET /api/v1/projects/{plan.project_id}` request. Do not
+  sweep the project list or assume the project is on its first page.
+
+[Forgetful issue #215](https://github.com/ScottRBK/forgetful/issues/215) is closed; this
+prototype no longer uses unpaginated resource lists.
 
 ### Optional features
 
@@ -233,9 +275,9 @@ and its assets; it does not need a separate route for each screen.
 - Mount a screen and start its requests when the user opens it.
 - Cancel requests that are no longer needed where practical. A late response must not replace
   data for a newer selection.
-- Keep requests bounded, apart from the explicit prototype-only summary-list exception above and
-  the explicit graph-overview page exception above. The overview uses lightweight graph summary
-  pages, not full records. Do not silently increase limits to fetch full records.
+- Keep requests bounded, apart from the explicit graph-overview page exception above and the
+  bounded multi-page option/board collections described above. The overview uses lightweight graph
+  summary pages, not full records. Do not silently increase limits to fetch full records.
 - Show API failures as failures, not as empty successful results.
 - Clean up timers, subscriptions, and graph animation when their screen is unmounted.
 
@@ -278,8 +320,13 @@ Before a slice is ready for review:
 - Type checking and the production build pass. Vite's build does not replace type checking.
 - Relevant automated tests pass.
 - Loading, empty results, API failures, and unavailable records have been checked.
-- Direct hash links, refreshes, and Back/Forward navigation work in a browser.
+- Direct hash links, refreshes, and Back/Forward navigation work in a browser, including list
+  page and filter context.
 - Opening Memories does not request graph data or download the graph library.
+- Resource list requests carry explicit bounded paging arguments. Missing v0.8.0 metadata fails
+  visibly, and an ordinary list never downloads a whole collection.
+- A board with more than 100 tasks shows every task, and a late-page failure leaves no partial
+  board. Project options reach beyond the first 100 summaries.
 - Leaving Graph stops its work; a late response cannot reopen an old selection.
 - Tests do not modify the live knowledge base. Any future write tests use isolated test data.
 
@@ -297,7 +344,9 @@ Future voice support and production packaging need no implementation in this moc
 - [x] Add wide-screen detail resizing/expansion and keep the narrow layout stacked.
 - [x] Build Dashboard, Projects, Plans, Documents, Code, Files, Skills, and Timeline as
   read-only pages.
-- [x] Allow existing unpaginated summary lists for this prototype only, tracked by issue #215.
+- [x] Migrate Projects, Plans, Tasks, Documents, Code, Files, and Skills to bounded v0.8.0 pages,
+  with totals, numbered controls, filter page resets, and page context. Issue #215 is closed.
+- [x] Collect complete task summary pages and project filter options without partial choices.
 - [x] Open each plan as a read-only Kanban board with selected-task details and manual refresh.
 - [x] Add a paginated all-memory/all-project Graph overview with optional types, project scoping,
   canvas highlighting, and a documented #221 partial-memory-link exception.

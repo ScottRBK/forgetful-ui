@@ -18,7 +18,9 @@ There are no write controls, no login flow, and no session screen. Login and Ses
 ## Requirements
 
 - Node.js 24.15 or newer and npm 11.
-- A running Forgetful HTTP instance. The default is `http://127.0.0.1:8022`.
+- A running Forgetful HTTP instance, version **0.8.0 or newer**. This UI uses the bounded
+  resource-list pagination that v0.8.0 introduced. The default address is
+  `http://127.0.0.1:8022`.
 - No Python changes and no Node.js production server.
 
 ## Install and run
@@ -71,13 +73,13 @@ The app uses hash routing:
 - `#/memories/<id>?page=<n>&project=<id>&sort=...&order=...&importance=...&max=...&q=...&from=...&to=...`
 - `#/graph?project=<id>&types=<comma-separated>&hide=<memory,project>`
 - `#/graph?memory=<id>&depth=<1-3>`
-- `#/projects/<id>?status=...&repo=...`
-- `#/plans?project=...&status=...`
-- `#/plans/<planId>?task=<taskId>&project=...&status=...`
-- `#/documents/<id>?project=...&type=...`
-- `#/code/<id>?project=...&language=...`
-- `#/files/<id>?project=...&mime=...`
-- `#/skills/<id>?project=...&importance=...`
+- `#/projects?page=<n>&status=...&repo=...` and `#/projects/<id>?page=<n>&status=...&repo=...`
+- `#/plans?page=<n>&project=...&status=...`
+- `#/plans/<planId>?task=<taskId>&page=<n>&project=...&status=...`
+- `#/documents?page=<n>&project=...&type=...` and `#/documents/<id>?page=<n>&...`
+- `#/code?page=<n>&project=...&language=...` and `#/code/<id>?page=<n>&...`
+- `#/files?page=<n>&project=...&mime=...` and `#/files/<id>?page=<n>&...`
+- `#/skills?page=<n>&project=...&importance=...` and `#/skills/<id>?page=<n>&...`
 - `#/entities/<id>?page=<n>&type=...`
 - `#/timeline?page=<n>&entity=...&action=...`
 
@@ -99,38 +101,61 @@ use the unprefixed `/api/v1` path.
 
 ## Behaviour and limits
 
-- A page has 20 memories. The list uses the server `total`; it does not download everything.
-- Numbered pagination shows first/last and nearby pages with ellipses. Previous/next remain.
+- Memories show 20 per page. The list uses the server `total`; it does not download everything.
+- Projects, Plans, Documents, Code, Files, and Skills request bounded 20-record pages with
+  explicit `limit`/`offset`, show first/last and nearby numbered controls with ellipses, and
+  report the visible range from the rows actually received and the server `total`. Filter changes
+  return to page 1. No ordinary list downloads a whole collection. An out-of-range page offers
+  first/last recovery, and a later-page or metadata failure is an error with Retry, not an empty
+  success.
+- A page without v0.8.0 metadata (`total`, `limit`, or `offset`) fails with an actionable message
+  naming Forgetful v0.8.0. Other inconsistencies, such as an invalid `total`, a non-array
+  collection, or more rows than the requested limit, are rejected as errors without being
+  described as an old backend. The UI does not fall back to an old unpaginated response.
 - The list uses server-backed controls from Forgetful #214: project filter, minimum and maximum
   importance filters, text search (`q`), inclusive updated-at range (`from`/`to` in the URL,
   `updated_from`/`updated_to` on the API), and sorting by Updated, Importance, Memory title, or
   Project name in either direction (`sort=project` maps to `project_name`). Tag and obsolete filters
   are not exposed in this iteration; the UI does not fake unsupported controls.
-- A project is selected from the separate project list. The project endpoint is not paginated.
+- Project filter options are on-demand project summaries collected through sequential bounded
+  pages, so more than 100 projects are available. They are not preloaded at startup and do not
+  fetch each project's full detail. A failed or inconsistent collection offers no partial choice
+  list; it shows Retry. A selected project outside the first page keeps its name. The option list
+  loads when a screen needing it opens; a browser reload or a later visit loads it again. Ordinary
+  paging, filter, or selection changes do not refetch it, and Memories Refresh does not refetch
+  project options.
 - Memories, Projects, Documents, Code, Files, and Skills have resizable wide-screen detail panes
   with pointer or keyboard control (Arrow keys, Home/End), bounded widths, and Expand/Restore.
   Narrow screens keep a full-width detail view with Back to list; resizing makes no API requests.
   The selected task panel on a Plan board has the same resize controls, with Back to board.
-- Projects, Plans, Documents, Code, Files, and Skills use the existing summary-list responses
-  without limit/offset. The Plan board's task summaries use the same prototype exception. These
-  responses are tracked by [Forgetful issue #215](https://github.com/ScottRBK/forgetful/issues/215).
-  They are not presented as server-paginated lists, and full content is fetched only after
-  selection.
+- Resource list projections stay as summaries, and full content is fetched only after selection.
+  Separate page requests are not a transaction: concurrent changes can shift offsets, and ordinary
+  page navigation may legitimately observe a different total between pages. Whole-collection
+  consistency checks apply only to collections assembled in one run, such as project filter
+  options and a plan board's task summaries. Those reject changed totals, repeated or
+  non-progressing pages, duplicates, and malformed records, and Retry restarts the collection from
+  its first page. [Forgetful issue #215](https://github.com/ScottRBK/forgetful/issues/215) is
+  closed.
 - Selecting a plan replaces the Plans list with a read-only Kanban board. Its columns are To do,
   Doing, Waiting, Done, and Cancelled, including empty columns. A blocked task keeps its state and
   gets a badge. Cards use task summaries only, so task detail is not downloaded until a card is
   selected. There is no dragging, editing, creation, or state change.
-- The board header shows the plan title, status, goal, and its own project name from the project
-  summary. The ID is shown as a fallback when that lookup is loading or unavailable. Direct plan
-  links do not load the full Plans list, and the app does not fetch each project's full detail.
-  Plan filters are restored by Back to plans.
+- A board collects every task summary page for its plan before it presents a complete board, so
+  a plan with more than 100 tasks is not truncated to the first page. It validates page metadata
+  and IDs and fails visibly on duplicates, empty or non-progressing pages, changed totals, wrong
+  offsets, or malformed records; it does not retry automatically to hide an inconsistent read.
+  Retry starts again from the first task page.
+- The board header shows the plan title, status, goal, and its own project name from one
+  `GET /api/v1/projects/{plan.project_id}` request. The ID is shown as a fallback when that lookup
+  is loading or unavailable. Direct plan links do not load the Plans list or sweep project pages.
+  Plan filters and page are restored by Back to plans.
 - A selected task opens a resizable detail panel with description, acceptance criteria,
   dependencies, and metadata. A task belonging to another plan is rejected rather than shown as
   a child. Manual Refresh updates the plan, task summaries, and the selected task; there is no
-  polling. While refreshing, the current board and selected pane stay visible with a refreshing
-  label and previous data. Failures keep that view with an explicit error and retry. Focus, board
-  scroll, and pane width are preserved. The panel uses the same stale-response and back/forward
-  protections as other detail pages.
+  polling. While refreshing, the last complete board and selected pane stay visible with a
+  refreshing label and previous data. Failures keep that view with an explicit error and retry.
+  Focus, board scroll, and pane width are preserved. The panel uses the same stale-response and
+  back/forward protections as other detail pages.
 - Files and Skills are optional. Capability discovery is read once per relevant screen. Explicitly
   disabled features show an unavailable state and make no resource requests. Failed or malformed
   discovery means unknown, not disabled; unknown allows a careful read-only attempt and retry.
@@ -193,9 +218,11 @@ use the unprefixed `/api/v1` path.
 
 Vitest workflow tests stub HTTP responses with synthetic records. Playwright tests exercise the
 rendered app in Firefox, including every completed page, optional feature states, the real
-force-graph canvas, navigation, reload/back/forward, failures, and 390/1024/1440 widths. The live
-smoke test only issues GET requests and expects the local backend to be healthy; files/skills
-disabled on the live instance are checked to make no resource requests.
+force-graph canvas, navigation, reload/back/forward, list paging and filter resets, complete
+multi-page boards, project options beyond the first 100 summaries, failures, and 390/1024/1440
+widths. The live smoke test only issues GET requests and expects the local backend to be healthy
+and to accept bounded list paging; files/skills disabled on the live instance are checked to make
+no resource requests.
 
 No test modifies the knowledge base. Test fixtures and screenshots do not contain live records.
 Screenshots captured during development are kept outside the repository.

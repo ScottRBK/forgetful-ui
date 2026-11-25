@@ -2,12 +2,18 @@ import { render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import App from '../../src/App'
-import { type FetchStub, installFetchStub, jsonResponse } from '../helpers/fetchStub'
+import {
+  type FetchStub,
+  installFetchStub,
+  jsonResponse,
+  pagedResponse,
+  type RouteStub,
+} from '../helpers/fetchStub'
 import { project } from '../helpers/synthetic'
 
 const PAGE_SIZE = 20
 
-const connectionRoutes = [
+const connectionRoutes: RouteStub[] = [
   { match: '/health', handler: () => jsonResponse({ status: 'healthy' }) },
   {
     match: '/api/v1/auth/info',
@@ -15,7 +21,7 @@ const connectionRoutes = [
   },
   {
     match: '/api/v1/projects',
-    handler: () => jsonResponse({ projects: [project(1, 'Alpha project')], total: 1 }),
+    handler: (request) => pagedResponse([project(1, 'Alpha project')], request, 'projects'),
   },
 ]
 

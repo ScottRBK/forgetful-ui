@@ -4,7 +4,9 @@ import {
   deploymentPrefix,
   getNodeDetail,
   getSubgraph,
+  listDocuments,
   listMemories,
+  listProjects,
 } from '../../src/api/client'
 import type { GraphNodeType } from '../../src/api/types'
 import { installFetchStub, jsonResponse } from '../helpers/fetchStub'
@@ -97,5 +99,86 @@ describe('API client', () => {
 
     await getNodeDetail(type, id)
     expect(fetcher.requests[0]?.url.pathname).toBe(path)
+  })
+})
+
+describe('Resource list pagination contract', () => {
+  it('requests an explicit bounded project page', async () => {
+    const fetcher = installFetchStub([
+      {
+        match: '/api/v1/projects',
+        handler: () => jsonResponse({ projects: [], total: 0, limit: 20, offset: 40 }),
+      },
+    ])
+
+    await listProjects({ status: null, repoName: null, limit: 20, offset: 40 })
+    const request = fetcher.requests[0]
+    expect(request?.url.searchParams.get('limit')).toBe('20')
+    expect(request?.url.searchParams.get('offset')).toBe('40')
+  })
+
+  it('rejects a project response without v0.8 pagination metadata', async () => {
+    installFetchStub([
+      {
+        match: '/api/v1/projects',
+        handler: () => jsonResponse({ projects: [], total: 0 }),
+      },
+    ])
+
+    await expect(
+      listProjects({ status: null, repoName: null, limit: 20, offset: 0 }),
+    ).rejects.toThrow(/v0\.8\.0/)
+  })
+
+  it('rejects pagination metadata that does not match the request', async () => {
+    installFetchStub([
+      {
+        match: '/api/v1/projects',
+        handler: () => jsonResponse({ projects: [], total: 0, limit: 20, offset: 0 }),
+      },
+    ])
+
+    await expect(
+      listProjects({ status: null, repoName: null, limit: 20, offset: 40 }),
+    ).rejects.toThrow(/unexpected resource pagination metadata/)
+  })
+
+  it('rejects a documents page without its total', async () => {
+    installFetchStub([
+      {
+        match: '/api/v1/documents',
+        handler: () => jsonResponse({ documents: [], limit: 20, offset: 0 }),
+      },
+    ])
+
+    await expect(
+      listDocuments({ projectId: null, documentType: null, limit: 20, offset: 0 }),
+    ).rejects.toThrow(/v0\.8\.0/)
+  })
+
+  it('rejects a documents page without its documents array', async () => {
+    installFetchStub([
+      {
+        match: '/api/v1/documents',
+        handler: () => jsonResponse({ total: 0, limit: 20, offset: 0 }),
+      },
+    ])
+
+    await expect(
+      listDocuments({ projectId: null, documentType: null, limit: 20, offset: 0 }),
+    ).rejects.toThrow(/documents array/)
+  })
+
+  it('rejects invalid documents pagination metadata', async () => {
+    installFetchStub([
+      {
+        match: '/api/v1/documents',
+        handler: () => jsonResponse({ documents: [], total: -1, limit: 20, offset: 0 }),
+      },
+    ])
+
+    await expect(
+      listDocuments({ projectId: null, documentType: null, limit: 20, offset: 0 }),
+    ).rejects.toThrow(/invalid resource pagination metadata/)
   })
 })

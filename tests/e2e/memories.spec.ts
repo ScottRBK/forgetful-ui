@@ -46,13 +46,18 @@ async function installApi(page: Page, options: ApiOptions = {}): Promise<ApiLog[
       return
     }
     if (url.pathname === '/api/v1/projects') {
+      const all = [
+        { id: 7, name: 'Alpha project' },
+        { id: 9, name: 'Beta project' },
+      ]
+      const limit = Number(url.searchParams.get('limit') ?? 20)
+      const offset = Number(url.searchParams.get('offset') ?? 0)
       const result = options.projects ?? {
         body: {
-          projects: [
-            { id: 7, name: 'Alpha project' },
-            { id: 9, name: 'Beta project' },
-          ],
-          total: 2,
+          projects: all.slice(offset, offset + limit),
+          total: all.length,
+          limit,
+          offset,
         },
       }
       await route.fulfill(json(result.body, result.status ?? 200))

@@ -1,13 +1,22 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import { getPlan, getTask, listPlans, listProjects, listTasks } from '../api/client'
+import { getPlan, getProject, getTask, listPlans, listTasks } from '../api/client'
 import type { PlanRecord, TaskDetailRecord, TaskSummaryRecord } from '../api/types'
 import { DetailField } from '../components/DetailField'
 import { EmptyPanel, ErrorPanel } from '../components/Feedback'
+import { OutOfRangePanel } from '../components/OutOfRangePanel'
+import { PaginationBar } from '../components/PaginationBar'
 import { ProjectSelectView } from '../components/ProjectSelect'
 import { type ApiDataState, useApiData } from '../hooks/useApiData'
 import { type CapabilityState, featureState } from '../hooks/useCapabilities'
+import { useProjectOptions } from '../hooks/useProjectOptions'
 import { useResizablePane } from '../hooks/useResizablePane'
 import { formatDate } from '../lib/format'
+import {
+  collectResourcePages,
+  RESOURCE_PAGE_SIZE,
+  resourceOffset,
+  resourceTotalPages,
+} from '../lib/resourcePages'
 import type { PlansRoute } from '../router'
 import { memoriesHref, navigate, plansHref, projectsHref } from '../router'
 
@@ -50,6 +59,7 @@ function TaskCard({
       href={plansHref({
         planId,
         taskId: task.id,
+        page: route.page,
         projectId: route.projectId,
         status: route.status,
       })}
@@ -247,12 +257,6 @@ function PlanBoard({
     controlsId: detailId,
   })
 
-  const projectsQuery = useApiData(
-    'project-options',
-    (signal) => listProjects({ status: null, repoName: null }, signal),
-    canRead,
-  )
-  const projects = projectsQuery.state.status === 'ready' ? projectsQuery.state.data.projects : []
   const plan = useApiData(
     `plan-${planId}-${planToken}`,
     (signal) => getPlan(planId, signal),
@@ -267,7 +271,21 @@ function PlanBoard({
   const planError = plan.state.status === 'error' ? plan.state : null
   const tasks = useApiData(
     `tasks-${planId}-${dataToken}`,
-    (signal) => listTasks({ planId }, signal),
+    async (signal) => {
+      const result = await collectResourcePages<TaskSummaryRecord>(
+        async (limit, offset, pageSignal) => {
+          const page = await listTasks({ planId, limit, offset }, pageSignal)
+          return {
+            items: page.tasks,
+            total: page.total,
+            limit: page.limit,
+            offset: page.offset,
+          }
+        },
+        signal,
+      )
+      return { tasks: result.items, total: result.total }
+    },
     canRead && planForView !== null,
   )
   const taskId = route.taskId
@@ -286,6 +304,12 @@ function PlanBoard({
   const busy =
     plan.state.status === 'loading' || tasks.state.status === 'loading' || taskBusy || refreshing
   const effectiveExpanded = pane.expanded && hasTask
+  const planProjectId = planForView?.project_id ?? null
+  const project = useApiData(
+    `plan-project-${planProjectId ?? 'none'}-${dataToken}`,
+    (signal) => getProject(planProjectId ?? 0, signal),
+    canRead && planProjectId !== null,
+  )
 
   useEffect(() => {
     if (plan.state.status !== 'ready' || plan.state.data.id !== planId) return
@@ -399,9 +423,14 @@ function PlanBoard({
     setPlanToken((value) => value + 1)
   }
 
-  const backToPlans = plansHref({ projectId: route.projectId, status: route.status })
+  const backToPlans = plansHref({
+    page: route.page,
+    projectId: route.projectId,
+    status: route.status,
+  })
   const backToBoard = plansHref({
     planId,
+    page: route.page,
     projectId: route.projectId,
     status: route.status,
   })
@@ -441,8 +470,7 @@ function PlanBoard({
 
   const planRecord = planForView
   const projectName =
-    projects.find((project) => project.id === planRecord.project_id)?.name ??
-    `Project #${planRecord.project_id}`
+    project.state.status === 'ready' ? project.state.data.name : `Project #${planRecord.project_id}`
   const taskCount = taskData?.total ?? planRecord.task_count ?? 0
 
   return (
@@ -512,11 +540,11 @@ function PlanBoard({
           </div>
         )}
 
-        {projectsQuery.state.status === 'error' && (
+        {project.state.status === 'error' && (
           <p className="mt-2 text-[11px] text-warn-ink">
-            Project options unavailable.{' '}
-            <button type="button" onClick={projectsQuery.retry} className="font-medium underline">
-              Retry project options
+            Project name unavailable.{' '}
+            <button type="button" onClick={project.retry} className="font-medium underline">
+              Retry project name
             </button>
           </p>
         )}
@@ -676,20 +704,28 @@ function PlansList({
   unknownPlanning: boolean
   retryCapabilities: () => void
 }) {
-  const projectsQuery = useApiData(
-    'project-options',
-    (signal) => listProjects({ status: null, repoName: null }, signal),
-    canRead,
-  )
+  const projectsQuery = useProjectOptions(canRead)
   const projects = projectsQuery.state.status === 'ready' ? projectsQuery.state.data.projects : []
   const projectNameFor = (projectId: number): string =>
     projects.find((project) => project.id === projectId)?.name ?? `Project #${projectId}`
+  const offset = resourceOffset(route.page, RESOURCE_PAGE_SIZE)
   const list = useApiData(
-    `plans-${route.projectId ?? ''}-${route.status ?? ''}`,
-    (signal) => listPlans({ projectId: route.projectId, status: route.status }, signal),
+    `plans-${route.page}-${route.projectId ?? ''}-${route.status ?? ''}`,
+    (signal) =>
+      listPlans(
+        {
+          projectId: route.projectId,
+          status: route.status,
+          limit: RESOURCE_PAGE_SIZE,
+          offset,
+        },
+        signal,
+      ),
     canRead,
   )
   const plans = list.state.status === 'ready' ? list.state.data.plans : []
+  const total = list.state.status === 'ready' ? list.state.data.total : 0
+  const totalPages = resourceTotalPages(total, RESOURCE_PAGE_SIZE)
 
   function updateRoute(params: { projectId?: number | null; status?: string | null }) {
     navigate(
@@ -748,11 +784,25 @@ function PlansList({
             onRetry={list.retry}
           />
         )}
-        {list.state.status === 'ready' && plans.length === 0 && (
-          <EmptyPanel title="No plans found">
-            <p>Try a different project or status filter.</p>
-          </EmptyPanel>
-        )}
+        {list.state.status === 'ready' &&
+          plans.length === 0 &&
+          (total > 0 ? (
+            <OutOfRangePanel
+              page={route.page}
+              totalPages={totalPages}
+              itemName="plans"
+              firstHref={plansHref({ projectId: route.projectId, status: route.status })}
+              lastHref={plansHref({
+                page: totalPages,
+                projectId: route.projectId,
+                status: route.status,
+              })}
+            />
+          ) : (
+            <EmptyPanel title="No plans found">
+              <p>Try a different project or status filter.</p>
+            </EmptyPanel>
+          ))}
         {plans.length > 0 && (
           <ul aria-label="Plans" className="divide-y divide-line">
             {plans.map((plan) => (
@@ -760,6 +810,7 @@ function PlansList({
                 <a
                   href={plansHref({
                     planId: plan.id,
+                    page: route.page,
                     projectId: route.projectId,
                     status: route.status,
                   })}
@@ -778,6 +829,23 @@ function PlansList({
               </li>
             ))}
           </ul>
+        )}
+        {plans.length > 0 && (
+          <PaginationBar
+            page={route.page}
+            totalPages={totalPages}
+            total={total}
+            limit={RESOURCE_PAGE_SIZE}
+            received={plans.length}
+            label="Plan"
+            hrefForPage={(page) =>
+              plansHref({
+                page,
+                projectId: route.projectId,
+                status: route.status,
+              })
+            }
+          />
         )}
       </section>
     </div>

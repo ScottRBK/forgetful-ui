@@ -199,15 +199,75 @@ export async function getCapabilities(signal?: AbortSignal): Promise<CapabilityS
   }
 }
 
+function getResourcePage<T>(
+  url: string,
+  limit: number,
+  offset: number,
+  arrayKey: string,
+  signal?: AbortSignal,
+): Promise<T> {
+  return getJson<T>(url, signal).then((response) => {
+    if (response === null || typeof response !== 'object' || Array.isArray(response)) {
+      throw new Error('The server returned a malformed resource page.')
+    }
+    const record = response as Record<string, unknown>
+    if (
+      record.limit === null ||
+      record.limit === undefined ||
+      record.offset === null ||
+      record.offset === undefined ||
+      record.total === null ||
+      record.total === undefined
+    ) {
+      throw new Error(
+        'This resource needs Forgetful v0.8.0 pagination metadata (total, limit and offset). ' +
+          'Update the backend; the UI will not render an incomplete page.',
+      )
+    }
+    if (
+      typeof record.limit !== 'number' ||
+      !Number.isSafeInteger(record.limit) ||
+      typeof record.offset !== 'number' ||
+      !Number.isSafeInteger(record.offset) ||
+      typeof record.total !== 'number' ||
+      !Number.isSafeInteger(record.total) ||
+      record.total < 0
+    ) {
+      throw new Error('The server returned invalid resource pagination metadata.')
+    }
+    if (record.limit !== limit || record.offset !== offset) {
+      throw new Error('The server returned unexpected resource pagination metadata.')
+    }
+    const rows = record[arrayKey]
+    if (!Array.isArray(rows)) {
+      throw new Error(`The server returned a resource page without its ${arrayKey} array.`)
+    }
+    if (rows.length > limit) {
+      throw new Error(`The server returned more rows than the requested ${limit}-row page limit.`)
+    }
+    return response
+  })
+}
+
 export function listProjects(
-  params: { status: string | null; repoName: string | null } = { status: null, repoName: null },
+  params: {
+    status: string | null
+    repoName: string | null
+    limit: number
+    offset: number
+  },
   signal?: AbortSignal,
 ): Promise<ProjectListResponse> {
-  return getJson<ProjectListResponse>(
+  return getResourcePage<ProjectListResponse>(
     queryPath(`${apiRoot()}/projects`, {
       status: params.status,
       repo_name: params.repoName,
+      limit: params.limit,
+      offset: params.offset,
     }),
+    params.limit,
+    params.offset,
+    'projects',
     signal,
   )
 }
@@ -217,15 +277,26 @@ export function getProject(projectId: number, signal?: AbortSignal): Promise<Pro
 }
 
 export function listPlans(
-  params: { projectId: number | null; status: string | null; externalRef?: string | null },
+  params: {
+    projectId: number | null
+    status: string | null
+    externalRef?: string | null
+    limit: number
+    offset: number
+  },
   signal?: AbortSignal,
 ): Promise<PlanListResponse> {
-  return getJson<PlanListResponse>(
+  return getResourcePage<PlanListResponse>(
     queryPath(`${apiRoot()}/plans`, {
       project_id: params.projectId,
       status: params.status,
       external_ref: params.externalRef ?? null,
+      limit: params.limit,
+      offset: params.offset,
     }),
+    params.limit,
+    params.offset,
+    'plans',
     signal,
   )
 }
@@ -235,15 +306,26 @@ export function getPlan(planId: number, signal?: AbortSignal): Promise<PlanRecor
 }
 
 export function listTasks(
-  params: { planId: number; state?: string | null; priority?: string | null },
+  params: {
+    planId: number
+    state?: string | null
+    priority?: string | null
+    limit: number
+    offset: number
+  },
   signal?: AbortSignal,
 ): Promise<TaskListResponse> {
-  return getJson<TaskListResponse>(
+  return getResourcePage<TaskListResponse>(
     queryPath(`${apiRoot()}/tasks`, {
       plan_id: params.planId,
       state: params.state ?? null,
       priority: params.priority ?? null,
+      limit: params.limit,
+      offset: params.offset,
     }),
+    params.limit,
+    params.offset,
+    'tasks',
     signal,
   )
 }
@@ -253,14 +335,24 @@ export function getTask(taskId: number, signal?: AbortSignal): Promise<TaskDetai
 }
 
 export function listDocuments(
-  params: { projectId: number | null; documentType: string | null },
+  params: {
+    projectId: number | null
+    documentType: string | null
+    limit: number
+    offset: number
+  },
   signal?: AbortSignal,
 ): Promise<DocumentListResponse> {
-  return getJson<DocumentListResponse>(
+  return getResourcePage<DocumentListResponse>(
     queryPath(`${apiRoot()}/documents`, {
       project_id: params.projectId,
       document_type: params.documentType,
+      limit: params.limit,
+      offset: params.offset,
     }),
+    params.limit,
+    params.offset,
+    'documents',
     signal,
   )
 }
@@ -270,14 +362,24 @@ export function getDocument(documentId: number, signal?: AbortSignal): Promise<D
 }
 
 export function listCodeArtifacts(
-  params: { projectId: number | null; language: string | null },
+  params: {
+    projectId: number | null
+    language: string | null
+    limit: number
+    offset: number
+  },
   signal?: AbortSignal,
 ): Promise<CodeArtifactListResponse> {
-  return getJson<CodeArtifactListResponse>(
+  return getResourcePage<CodeArtifactListResponse>(
     queryPath(`${apiRoot()}/code-artifacts`, {
       project_id: params.projectId,
       language: params.language,
+      limit: params.limit,
+      offset: params.offset,
     }),
+    params.limit,
+    params.offset,
+    'code_artifacts',
     signal,
   )
 }
@@ -290,14 +392,24 @@ export function getCodeArtifact(
 }
 
 export function listFiles(
-  params: { projectId: number | null; mimeType: string | null },
+  params: {
+    projectId: number | null
+    mimeType: string | null
+    limit: number
+    offset: number
+  },
   signal?: AbortSignal,
 ): Promise<FileListResponse> {
-  return getJson<FileListResponse>(
+  return getResourcePage<FileListResponse>(
     queryPath(`${apiRoot()}/files`, {
       project_id: params.projectId,
       mime_type: params.mimeType,
+      limit: params.limit,
+      offset: params.offset,
     }),
+    params.limit,
+    params.offset,
+    'files',
     signal,
   )
 }
@@ -307,14 +419,24 @@ export function getFile(fileId: number, signal?: AbortSignal): Promise<FileRecor
 }
 
 export function listSkills(
-  params: { projectId: number | null; importanceThreshold: number | null },
+  params: {
+    projectId: number | null
+    importanceThreshold: number | null
+    limit: number
+    offset: number
+  },
   signal?: AbortSignal,
 ): Promise<SkillListResponse> {
-  return getJson<SkillListResponse>(
+  return getResourcePage<SkillListResponse>(
     queryPath(`${apiRoot()}/skills`, {
       project_id: params.projectId,
       importance_threshold: params.importanceThreshold,
+      limit: params.limit,
+      offset: params.offset,
     }),
+    params.limit,
+    params.offset,
+    'skills',
     signal,
   )
 }

@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react'
 import { getDocument, listDocuments } from '../api/client'
 import { DetailField } from '../components/DetailField'
 import { EmptyPanel, ErrorPanel } from '../components/Feedback'
+import { OutOfRangePanel } from '../components/OutOfRangePanel'
+import { PaginationBar } from '../components/PaginationBar'
 import { ProjectSelect } from '../components/ProjectSelect'
 import { ResourceLayout } from '../components/ResourceLayout'
 import { useApiData } from '../hooks/useApiData'
 import { formatDate } from '../lib/format'
+import { RESOURCE_PAGE_SIZE, resourceOffset, resourceTotalPages } from '../lib/resourcePages'
 import type { DocumentsRoute } from '../router'
 import { documentsHref, navigate } from '../router'
 
@@ -62,12 +65,23 @@ function DocumentDetail({ documentId }: { documentId: number }) {
 export default function DocumentsScreen({ route }: { route: DocumentsRoute }) {
   const [typeInput, setTypeInput] = useState(route.documentType ?? '')
   useEffect(() => setTypeInput(route.documentType ?? ''), [route.documentType])
+  const offset = resourceOffset(route.page, RESOURCE_PAGE_SIZE)
   const list = useApiData(
-    `documents-${route.projectId ?? ''}-${route.documentType ?? ''}`,
+    `documents-${route.page}-${route.projectId ?? ''}-${route.documentType ?? ''}`,
     (signal) =>
-      listDocuments({ projectId: route.projectId, documentType: route.documentType }, signal),
+      listDocuments(
+        {
+          projectId: route.projectId,
+          documentType: route.documentType,
+          limit: RESOURCE_PAGE_SIZE,
+          offset,
+        },
+        signal,
+      ),
   )
   const documents = list.state.status === 'ready' ? list.state.data.documents : []
+  const total = list.state.status === 'ready' ? list.state.data.total : 0
+  const totalPages = resourceTotalPages(total, RESOURCE_PAGE_SIZE)
 
   function update(params: { projectId?: number | null; documentType?: string | null }) {
     navigate(
@@ -90,7 +104,11 @@ export default function DocumentsScreen({ route }: { route: DocumentsRoute }) {
       }
       detailTitle="Document detail"
       selectedId={route.documentId}
-      backHref={documentsHref({ projectId: route.projectId, documentType: route.documentType })}
+      backHref={documentsHref({
+        page: route.page,
+        projectId: route.projectId,
+        documentType: route.documentType,
+      })}
       list={
         <>
           <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2.5">
@@ -131,11 +149,28 @@ export default function DocumentsScreen({ route }: { route: DocumentsRoute }) {
               onRetry={list.retry}
             />
           )}
-          {list.state.status === 'ready' && documents.length === 0 && (
-            <EmptyPanel title="No documents found">
-              <p>Try a different project or document type.</p>
-            </EmptyPanel>
-          )}
+          {list.state.status === 'ready' &&
+            documents.length === 0 &&
+            (total > 0 ? (
+              <OutOfRangePanel
+                page={route.page}
+                totalPages={totalPages}
+                itemName="documents"
+                firstHref={documentsHref({
+                  projectId: route.projectId,
+                  documentType: route.documentType,
+                })}
+                lastHref={documentsHref({
+                  page: totalPages,
+                  projectId: route.projectId,
+                  documentType: route.documentType,
+                })}
+              />
+            ) : (
+              <EmptyPanel title="No documents found">
+                <p>Try a different project or document type.</p>
+              </EmptyPanel>
+            ))}
           {documents.length > 0 && (
             <ul aria-label="Documents" className="divide-y divide-line">
               {documents.map((document) => (
@@ -143,6 +178,7 @@ export default function DocumentsScreen({ route }: { route: DocumentsRoute }) {
                   <a
                     href={documentsHref({
                       documentId: document.id,
+                      page: route.page,
                       projectId: route.projectId,
                       documentType: route.documentType,
                     })}
@@ -164,6 +200,23 @@ export default function DocumentsScreen({ route }: { route: DocumentsRoute }) {
                 </li>
               ))}
             </ul>
+          )}
+          {documents.length > 0 && (
+            <PaginationBar
+              page={route.page}
+              totalPages={totalPages}
+              total={total}
+              limit={RESOURCE_PAGE_SIZE}
+              received={documents.length}
+              label="Document"
+              hrefForPage={(page) =>
+                documentsHref({
+                  page,
+                  projectId: route.projectId,
+                  documentType: route.documentType,
+                })
+              }
+            />
           )}
         </>
       }

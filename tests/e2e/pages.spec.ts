@@ -206,6 +206,15 @@ const syntheticEntityRelationships = {
   total: 1,
 }
 
+function pageSlice<T>(
+  items: T[],
+  url: URL,
+): { items: T[]; total: number; limit: number; offset: number } {
+  const limit = Number(url.searchParams.get('limit') ?? 20)
+  const offset = Number(url.searchParams.get('offset') ?? 0)
+  return { items: items.slice(offset, offset + limit), total: items.length, limit, offset }
+}
+
 async function installBaseApi(page: Page, options: PageApiOptions = {}) {
   const requests: URL[] = []
   await page.route('**/health', (route) =>
@@ -252,8 +261,16 @@ async function installBaseApi(page: Page, options: PageApiOptions = {}) {
       return
     }
     if (url.pathname === '/api/v1/projects') {
+      const status = url.searchParams.get('status')
+      const repoName = url.searchParams.get('repo_name')
+      const all = (options.projects ?? []).filter(
+        (item) =>
+          (status === null || (item as { status?: string }).status === status) &&
+          (repoName === null || (item as { repo_name?: string }).repo_name === repoName),
+      )
+      const page = pageSlice(all, url)
       await route.fulfill(
-        json({ projects: options.projects ?? [], total: options.projects?.length ?? 0 }),
+        json({ projects: page.items, total: page.total, limit: page.limit, offset: page.offset }),
       )
       return
     }
@@ -269,7 +286,18 @@ async function installBaseApi(page: Page, options: PageApiOptions = {}) {
       return
     }
     if (url.pathname === '/api/v1/plans') {
-      await route.fulfill(json({ plans: options.plans ?? [], total: options.plans?.length ?? 0 }))
+      const projectId = url.searchParams.get('project_id')
+      const status = url.searchParams.get('status')
+      const all = (options.plans ?? []).filter(
+        (item) =>
+          (projectId === null ||
+            String((item as { project_id?: number }).project_id) === projectId) &&
+          (status === null || (item as { status?: string }).status === status),
+      )
+      const page = pageSlice(all, url)
+      await route.fulfill(
+        json({ plans: page.items, total: page.total, limit: page.limit, offset: page.offset }),
+      )
       return
     }
     const planMatch = /^\/api\/v1\/plans\/(\d+)$/.exec(url.pathname)
@@ -284,8 +312,18 @@ async function installBaseApi(page: Page, options: PageApiOptions = {}) {
       return
     }
     if (url.pathname === '/api/v1/tasks') {
+      const planId = Number(url.searchParams.get('plan_id'))
+      const state = url.searchParams.get('state')
+      const priority = url.searchParams.get('priority')
+      const all = (options.taskSummaries ?? []).filter(
+        (item) =>
+          Number((item as { plan_id?: number }).plan_id) === planId &&
+          (state === null || (item as { state?: string }).state === state) &&
+          (priority === null || (item as { priority?: string }).priority === priority),
+      )
+      const page = pageSlice(all, url)
       await route.fulfill(
-        json({ tasks: options.taskSummaries ?? [], total: options.taskSummaries?.length ?? 0 }),
+        json({ tasks: page.items, total: page.total, limit: page.limit, offset: page.offset }),
       )
       return
     }
@@ -301,13 +339,19 @@ async function installBaseApi(page: Page, options: PageApiOptions = {}) {
       return
     }
     if (url.pathname === '/api/v1/documents') {
+      const projectId = url.searchParams.get('project_id')
       const documentType = url.searchParams.get('document_type')
-      const documents = (options.documents ?? []).filter(
+      const all = (options.documents ?? []).filter(
         (item) =>
-          documentType === null ||
-          (item as { document_type?: string }).document_type === documentType,
+          (projectId === null ||
+            String((item as { project_id?: number }).project_id) === projectId) &&
+          (documentType === null ||
+            (item as { document_type?: string }).document_type === documentType),
       )
-      await route.fulfill(json({ documents, total: documents.length }))
+      const page = pageSlice(all, url)
+      await route.fulfill(
+        json({ documents: page.items, total: page.total, limit: page.limit, offset: page.offset }),
+      )
       return
     }
     const documentMatch = /^\/api\/v1\/documents\/(\d+)$/.exec(url.pathname)
@@ -322,10 +366,21 @@ async function installBaseApi(page: Page, options: PageApiOptions = {}) {
       return
     }
     if (url.pathname === '/api/v1/code-artifacts') {
+      const projectId = url.searchParams.get('project_id')
+      const language = url.searchParams.get('language')
+      const all = (options.codeArtifacts ?? []).filter(
+        (item) =>
+          (projectId === null ||
+            String((item as { project_id?: number }).project_id) === projectId) &&
+          (language === null || (item as { language?: string }).language === language),
+      )
+      const page = pageSlice(all, url)
       await route.fulfill(
         json({
-          code_artifacts: options.codeArtifacts ?? [],
-          total: options.codeArtifacts?.length ?? 0,
+          code_artifacts: page.items,
+          total: page.total,
+          limit: page.limit,
+          offset: page.offset,
         }),
       )
       return
@@ -342,7 +397,18 @@ async function installBaseApi(page: Page, options: PageApiOptions = {}) {
       return
     }
     if (url.pathname === '/api/v1/files') {
-      await route.fulfill(json({ files: options.files ?? [], total: options.files?.length ?? 0 }))
+      const projectId = url.searchParams.get('project_id')
+      const mimeType = url.searchParams.get('mime_type')
+      const all = (options.files ?? []).filter(
+        (item) =>
+          (projectId === null ||
+            String((item as { project_id?: number }).project_id) === projectId) &&
+          (mimeType === null || (item as { mime_type?: string }).mime_type === mimeType),
+      )
+      const page = pageSlice(all, url)
+      await route.fulfill(
+        json({ files: page.items, total: page.total, limit: page.limit, offset: page.offset }),
+      )
       return
     }
     const fileMatch = /^\/api\/v1\/files\/(\d+)$/.exec(url.pathname)
@@ -357,8 +423,18 @@ async function installBaseApi(page: Page, options: PageApiOptions = {}) {
       return
     }
     if (url.pathname === '/api/v1/skills') {
+      const projectId = url.searchParams.get('project_id')
+      const threshold = url.searchParams.get('importance_threshold')
+      const all = (options.skills ?? []).filter(
+        (item) =>
+          (projectId === null ||
+            String((item as { project_id?: number }).project_id) === projectId) &&
+          (threshold === null ||
+            Number((item as { importance?: number }).importance ?? 0) >= Number(threshold)),
+      )
+      const page = pageSlice(all, url)
       await route.fulfill(
-        json({ skills: options.skills ?? [], total: options.skills?.length ?? 0 }),
+        json({ skills: page.items, total: page.total, limit: page.limit, offset: page.offset }),
       )
       return
     }
@@ -481,6 +557,322 @@ test('dashboard shows real status and bounded recent data', async ({ page }) => 
   expect(requests.some((url) => url.pathname === '/api/v1/files')).toBe(false)
   expect(requests.some((url) => url.pathname === '/api/v1/skills')).toBe(false)
   expect(requests.some((url) => url.pathname === '/api/v1/plans')).toBe(false)
+})
+
+test('projects uses bounded server pages and preserves page context', async ({ page }) => {
+  const projects = Array.from({ length: 45 }, (_, index) => ({
+    ...syntheticProject,
+    id: index + 1,
+    name: `Synthetic paged project ${index + 1}`,
+    status: index < 30 ? 'active' : 'archived',
+  }))
+  await installBaseApi(page, { projects })
+  await page.route('**/api/v1/projects?**', async (route) => {
+    const url = new URL(route.request().url())
+    const limit = Number(url.searchParams.get('limit') ?? 20)
+    const offset = Number(url.searchParams.get('offset') ?? 0)
+    const status = url.searchParams.get('status')
+    const filtered = status === null ? projects : projects.filter((item) => item.status === status)
+    await route.fulfill(
+      json({
+        projects: filtered.slice(offset, offset + limit),
+        total: filtered.length,
+        limit,
+        offset,
+      }),
+    )
+  })
+
+  const initialRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return (
+      url.pathname === '/api/v1/projects' &&
+      url.searchParams.get('limit') === '20' &&
+      url.searchParams.get('offset') === '0'
+    )
+  })
+  await page.goto('/#/projects')
+  await initialRequestPromise
+  await expect(page.getByRole('link', { name: /Synthetic paged project 1\b/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Synthetic paged project 21\b/ })).toHaveCount(0)
+  await expect(page.getByText('Page 1 of 3')).toBeVisible()
+  await expect(page.getByText(/Showing 1–20 of 45/)).toBeVisible()
+
+  const pageTwoRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return (
+      url.pathname === '/api/v1/projects' &&
+      url.searchParams.get('limit') === '20' &&
+      url.searchParams.get('offset') === '20'
+    )
+  })
+  await page.getByRole('link', { name: 'Page 2' }).click()
+  await pageTwoRequestPromise
+  await expect(page).toHaveURL(/#\/projects\?page=2$/)
+  await expect(page.getByRole('link', { name: /Synthetic paged project 21\b/ })).toBeVisible()
+  await expect(page.getByRole('link', { name: /Synthetic paged project 1\b/ })).toHaveCount(0)
+
+  await page.getByRole('link', { name: /Synthetic paged project 21\b/ }).click()
+  await expect(page).toHaveURL(/#\/projects\/21\?page=2$/)
+  await page.goBack()
+  await expect(page).toHaveURL(/#\/projects\?page=2$/)
+  await expect(page.getByRole('link', { name: /Synthetic paged project 21\b/ })).toBeVisible()
+
+  const filterRequestPromise = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return (
+      url.pathname === '/api/v1/projects' &&
+      url.searchParams.get('status') === 'active' &&
+      url.searchParams.get('offset') === '0'
+    )
+  })
+  await page.getByLabel('Status filter').selectOption('active')
+  await filterRequestPromise
+  await expect(page).toHaveURL(/#\/projects\?status=active$/)
+  await expect(page.getByText('Page 1 of 2')).toBeVisible()
+})
+
+test('every resource list pages with totals, filters, history and out-of-range recovery', async ({
+  page,
+}) => {
+  test.setTimeout(240_000)
+  const timestamp = '2026-01-01T00:00:00Z'
+  const base = {
+    description: 'Synthetic summary',
+    tags: [],
+    created_at: timestamp,
+    updated_at: timestamp,
+  }
+  const ids = Array.from({ length: 45 }, (_, index) => 45 - index)
+  const projectRecords = ids.map((id) => ({
+    ...base,
+    id,
+    name: `Synthetic paged project ${id}`,
+    project_type: 'development',
+    status: 'active',
+    repo_name: null,
+    memory_count: 0,
+  }))
+  const planRecords = ids.map((id) => ({
+    ...base,
+    id,
+    title: `Synthetic paged plan ${id}`,
+    project_id: 1,
+    status: 'active',
+    task_count: 0,
+  }))
+  const documentRecords = ids.map((id) => ({
+    ...base,
+    id,
+    title: `Synthetic paged document ${id}`,
+    document_type: 'text',
+    filename: `synthetic-paged-document-${id}.txt`,
+    size_bytes: 10,
+    project_id: 1,
+  }))
+  const codeRecords = ids.map((id) => ({
+    ...base,
+    id,
+    title: `Synthetic paged code ${id}`,
+    language: 'typescript',
+    project_id: 1,
+  }))
+  const fileRecords = ids.map((id) => ({
+    ...base,
+    id,
+    filename: `synthetic-paged-file-${id}.txt`,
+    mime_type: 'text/plain',
+    size_bytes: 10,
+    project_id: 1,
+  }))
+  const skillRecords = ids.map((id) => ({
+    ...base,
+    id,
+    name: `Synthetic paged skill ${id}`,
+    importance: 5,
+    project_id: 1,
+  }))
+  const capabilities = {
+    schema_version: 1,
+    capabilities: { planning: true, skills: true, files: true, activity_stream: false },
+  }
+
+  const cases = [
+    {
+      screen: 'projects',
+      label: 'Projects',
+      segment: 'projects',
+      optionKey: 'projects' as const,
+      resource: 'projects',
+      records: projectRecords,
+      firstTitle: 'Synthetic paged project 25',
+      backLink: 'Back to list',
+      filterLabel: 'Status filter',
+      filterParam: ['status', 'active'] as const,
+      applyFilter: async (target: Page) => {
+        await target.getByLabel('Status filter').selectOption('active')
+      },
+    },
+    {
+      screen: 'plans',
+      label: 'Plans',
+      segment: 'plans',
+      optionKey: 'plans' as const,
+      resource: 'plans',
+      records: planRecords,
+      firstTitle: 'Synthetic paged plan 25',
+      backLink: 'Back to plans',
+      filterLabel: 'Plan status filter',
+      filterParam: ['status', 'active'] as const,
+      applyFilter: async (target: Page) => {
+        await target.getByLabel('Plan status filter').selectOption('active')
+      },
+    },
+    {
+      screen: 'documents',
+      label: 'Documents',
+      segment: 'documents',
+      optionKey: 'documents' as const,
+      resource: 'documents',
+      records: documentRecords,
+      firstTitle: 'Synthetic paged document 25',
+      backLink: 'Back to list',
+      filterLabel: 'Document type filter',
+      filterParam: ['type', 'text'] as const,
+      applyFilter: async (target: Page) => {
+        await target.getByRole('textbox', { name: 'Document type filter' }).fill('text')
+        await target.getByRole('button', { name: 'Apply document type filter' }).click()
+      },
+    },
+    {
+      screen: 'code',
+      label: 'Code artifacts',
+      segment: 'code',
+      optionKey: 'codeArtifacts' as const,
+      resource: 'code-artifacts',
+      records: codeRecords,
+      firstTitle: 'Synthetic paged code 25',
+      backLink: 'Back to list',
+      filterLabel: 'Language filter',
+      filterParam: ['language', 'typescript'] as const,
+      applyFilter: async (target: Page) => {
+        await target.getByRole('textbox', { name: 'Language filter' }).fill('typescript')
+        await target.getByRole('button', { name: 'Apply language filter' }).click()
+      },
+    },
+    {
+      screen: 'files',
+      label: 'Files',
+      segment: 'files',
+      optionKey: 'files' as const,
+      resource: 'files',
+      records: fileRecords,
+      firstTitle: 'synthetic-paged-file-25.txt',
+      backLink: 'Back to list',
+      filterLabel: 'MIME type filter',
+      filterParam: ['mime', 'text/plain'] as const,
+      applyFilter: async (target: Page) => {
+        await target.getByRole('textbox', { name: 'MIME type filter' }).fill('text/plain')
+        await target.getByRole('button', { name: 'Apply MIME filter' }).click()
+      },
+    },
+    {
+      screen: 'skills',
+      label: 'Skills',
+      segment: 'skills',
+      optionKey: 'skills' as const,
+      resource: 'skills',
+      records: skillRecords,
+      firstTitle: 'Synthetic paged skill 25',
+      backLink: 'Back to list',
+      filterLabel: 'Minimum importance',
+      filterParam: ['importance', '5'] as const,
+      applyFilter: async (target: Page) => {
+        await target.getByLabel('Minimum importance').selectOption('5')
+      },
+    },
+  ]
+
+  for (const testCase of cases) {
+    const target = await page.context().newPage()
+    try {
+      const requests = await installBaseApi(target, {
+        capabilities,
+        projects: testCase.optionKey === 'projects' ? projectRecords : [syntheticProject],
+        plans: testCase.optionKey === 'plans' ? planRecords : [],
+        documents: testCase.optionKey === 'documents' ? documentRecords : [],
+        codeArtifacts: testCase.optionKey === 'codeArtifacts' ? codeRecords : [],
+        files: testCase.optionKey === 'files' ? fileRecords : [],
+        skills: testCase.optionKey === 'skills' ? skillRecords : [],
+      })
+      const list = target.getByRole('list', { name: testCase.label, exact: true })
+
+      await target.goto(`/#/${testCase.screen}?page=2`)
+      await expect(list.getByRole('link')).toHaveCount(20)
+      await expect(list.getByRole('link').first()).toContainText(testCase.firstTitle)
+      await expect(target.getByText('Page 2 of 3')).toBeVisible()
+      await expect(target.getByText('Showing 21–40 of 45')).toBeVisible()
+      const pageTwoRequest = requests
+        .filter((url) => url.pathname === `/api/v1/${testCase.resource}`)
+        .at(-1)
+      expect(pageTwoRequest?.searchParams.get('offset')).toBe('20')
+      expect(pageTwoRequest?.searchParams.get('limit')).toBe('20')
+
+      await list.getByRole('link').first().click()
+      await expect(target).toHaveURL(new RegExp(`#/${testCase.segment}/25\\?page=2$`))
+      await expect(target.locator('a', { hasText: testCase.backLink }).first()).toHaveAttribute(
+        'href',
+        /page=2/,
+      )
+
+      await target.goBack()
+      await expect(target).toHaveURL(new RegExp(`#/${testCase.screen}\\?page=2$`))
+      await expect(list.getByRole('link')).toHaveCount(20)
+      await expect(list.getByRole('link').first()).toContainText(testCase.firstTitle)
+
+      const reloadRequest = target.waitForRequest((request) => {
+        const url = new URL(request.url())
+        return (
+          url.pathname === `/api/v1/${testCase.resource}` && url.searchParams.get('offset') === '20'
+        )
+      })
+      await target.reload()
+      await reloadRequest
+      await expect(list.getByRole('link')).toHaveCount(20)
+
+      const filterRequest = target.waitForRequest((request) => {
+        const url = new URL(request.url())
+        return (
+          url.pathname === `/api/v1/${testCase.resource}` &&
+          url.searchParams.get('offset') === '0' &&
+          url.searchParams.get('limit') === '20'
+        )
+      })
+      await testCase.applyFilter(target)
+      await filterRequest
+      await expect(target.getByText('Page 1 of 3')).toBeVisible()
+      await expect(list.getByRole('link')).toHaveCount(20)
+      const filteredQuery = new URLSearchParams(target.url().split('?')[1])
+      expect(filteredQuery.get(testCase.filterParam[0])).toBe(testCase.filterParam[1])
+      expect(filteredQuery.has('page')).toBe(false)
+
+      await target.goto(`/#/${testCase.screen}?page=9`)
+      await expect(target.getByText('Page 9 is outside the available range (1–3).')).toBeVisible()
+      await expect(list).toHaveCount(0)
+      const lastPageRequest = target.waitForRequest((request) => {
+        const url = new URL(request.url())
+        return (
+          url.pathname === `/api/v1/${testCase.resource}` && url.searchParams.get('offset') === '40'
+        )
+      })
+      await target.getByRole('link', { name: 'Last page (3)' }).click()
+      await lastPageRequest
+      await expect(list.getByRole('link')).toHaveCount(5)
+      await expect(target.getByText('Showing 41–45 of 45')).toBeVisible()
+    } finally {
+      await target.close()
+    }
+  }
 })
 
 test('projects supports filters, detail and project memory link', async ({ page }) => {
@@ -642,7 +1034,8 @@ test('plan board shows five states, blocked badge and summary cards only', async
   await expect(todoCard.getByText('1/2 criteria', { exact: true })).toBeVisible()
 
   expect(requests.filter((url) => url.pathname === '/api/v1/plans')).toHaveLength(0)
-  expect(requests.filter((url) => url.pathname === '/api/v1/projects/1')).toHaveLength(0)
+  expect(requests.filter((url) => url.pathname === '/api/v1/projects')).toHaveLength(0)
+  expect(requests.filter((url) => url.pathname === '/api/v1/projects/1')).toHaveLength(1)
   expect(requests.filter((url) => url.pathname === '/api/v1/tasks')).toHaveLength(1)
   expect(requests.filter((url) => /^\/api\/v1\/tasks\/\d+$/.test(url.pathname))).toHaveLength(0)
   expect(
@@ -841,7 +1234,14 @@ test('plan board manually refreshes plan, summaries and selected task detail', a
     if (url.pathname === '/api/v1/tasks') {
       summaryRequests += 1
       const tasks = phase === 'refresh' ? [refreshedTask] : [initialTask]
-      await route.fulfill(json({ tasks, total: tasks.length }))
+      await route.fulfill(
+        json({
+          tasks,
+          total: tasks.length,
+          limit: Number(url.searchParams.get('limit') ?? 100),
+          offset: Number(url.searchParams.get('offset') ?? 0),
+        }),
+      )
       return
     }
     const match = /^\/api\/v1\/tasks\/(\d+)$/.exec(url.pathname)
@@ -1221,7 +1621,14 @@ test('plan board task failure is not empty and retries', async ({ page }) => {
         await route.fulfill(json({ error: 'Synthetic task failure' }, 500))
         return
       }
-      await route.fulfill(json({ tasks: [syntheticTaskSummary], total: 1 }))
+      await route.fulfill(
+        json({
+          tasks: [syntheticTaskSummary],
+          total: 1,
+          limit: Number(url.searchParams.get('limit') ?? 100),
+          offset: Number(url.searchParams.get('offset') ?? 0),
+        }),
+      )
       return
     }
     await route.fulfill(json(syntheticTaskDetail))
@@ -1328,7 +1735,14 @@ test('plan board refresh failure shows an error and retries task summaries', asy
         await route.fulfill(json({ error: 'Synthetic refresh failure' }, 500))
         return
       }
-      await route.fulfill(json({ tasks: [syntheticTaskSummary], total: 1 }))
+      await route.fulfill(
+        json({
+          tasks: [syntheticTaskSummary],
+          total: 1,
+          limit: Number(url.searchParams.get('limit') ?? 100),
+          offset: Number(url.searchParams.get('offset') ?? 0),
+        }),
+      )
       return
     }
     await route.fulfill(json(syntheticTaskDetail))
@@ -2086,16 +2500,32 @@ test('new page list errors retry and detail 404 are explicit', async ({ page }) 
   await page.route('**/api/v1/auth/info', (route) =>
     route.fulfill(json({ authEnabled: false, authMode: 'disabled' })),
   )
-  await page.route('**/api/v1/projects', (route) =>
-    route.fulfill(json({ projects: [syntheticProject], total: 1 })),
-  )
-  await page.route('**/api/v1/documents', async (route) => {
+  await page.route('**/api/v1/projects?**', (route) => {
+    const url = new URL(route.request().url())
+    route.fulfill(
+      json({
+        projects: [syntheticProject],
+        total: 1,
+        limit: Number(url.searchParams.get('limit') ?? 100),
+        offset: Number(url.searchParams.get('offset') ?? 0),
+      }),
+    )
+  })
+  await page.route('**/api/v1/documents?**', async (route) => {
+    const url = new URL(route.request().url())
     listAttempts += 1
     if (listAttempts === 1) {
       await route.fulfill(json({ error: 'Synthetic list failure' }, 500))
       return
     }
-    await route.fulfill(json({ documents: [syntheticDocument], total: 1 }))
+    await route.fulfill(
+      json({
+        documents: [syntheticDocument],
+        total: 1,
+        limit: Number(url.searchParams.get('limit') ?? 20),
+        offset: Number(url.searchParams.get('offset') ?? 0),
+      }),
+    )
   })
   await page.route('**/api/v1/documents/73', (route) =>
     route.fulfill(json({ error: 'Document not found' }, 404)),
@@ -2363,11 +2793,25 @@ test('health 503 still allows capability discovery and optional pages', async ({
       return
     }
     if (url.pathname === '/api/v1/projects') {
-      await route.fulfill(json({ projects: [syntheticProject], total: 1 }))
+      await route.fulfill(
+        json({
+          projects: [syntheticProject],
+          total: 1,
+          limit: Number(url.searchParams.get('limit') ?? 20),
+          offset: Number(url.searchParams.get('offset') ?? 0),
+        }),
+      )
       return
     }
     if (url.pathname === '/api/v1/plans') {
-      await route.fulfill(json({ plans: [syntheticPlan], total: 1 }))
+      await route.fulfill(
+        json({
+          plans: [syntheticPlan],
+          total: 1,
+          limit: Number(url.searchParams.get('limit') ?? 20),
+          offset: Number(url.searchParams.get('offset') ?? 0),
+        }),
+      )
       return
     }
     if (url.pathname === '/api/v1/plans/55') {
@@ -2375,11 +2819,25 @@ test('health 503 still allows capability discovery and optional pages', async ({
       return
     }
     if (url.pathname === '/api/v1/tasks') {
-      await route.fulfill(json({ tasks: [], total: 0 }))
+      await route.fulfill(
+        json({
+          tasks: [],
+          total: 0,
+          limit: Number(url.searchParams.get('limit') ?? 100),
+          offset: Number(url.searchParams.get('offset') ?? 0),
+        }),
+      )
       return
     }
     if (url.pathname === '/api/v1/files') {
-      await route.fulfill(json({ files: [syntheticFile], total: 1 }))
+      await route.fulfill(
+        json({
+          files: [syntheticFile],
+          total: 1,
+          limit: Number(url.searchParams.get('limit') ?? 20),
+          offset: Number(url.searchParams.get('offset') ?? 0),
+        }),
+      )
       return
     }
     if (url.pathname === '/api/v1/memories') {
@@ -2447,11 +2905,25 @@ test('network failure reaches unknown capability and retryable resource errors',
       return
     }
     if (url.pathname === '/api/v1/projects') {
-      await route.fulfill(json({ projects: [syntheticProject], total: 1 }))
+      await route.fulfill(
+        json({
+          projects: [syntheticProject],
+          total: 1,
+          limit: Number(url.searchParams.get('limit') ?? 20),
+          offset: Number(url.searchParams.get('offset') ?? 0),
+        }),
+      )
       return
     }
     if (url.pathname === '/api/v1/plans') {
-      await route.fulfill(json({ plans: [syntheticPlan], total: 1 }))
+      await route.fulfill(
+        json({
+          plans: [syntheticPlan],
+          total: 1,
+          limit: Number(url.searchParams.get('limit') ?? 20),
+          offset: Number(url.searchParams.get('offset') ?? 0),
+        }),
+      )
       return
     }
     if (url.pathname === '/api/v1/plans/55') {
@@ -2459,7 +2931,14 @@ test('network failure reaches unknown capability and retryable resource errors',
       return
     }
     if (url.pathname === '/api/v1/tasks') {
-      await route.fulfill(json({ tasks: [], total: 0 }))
+      await route.fulfill(
+        json({
+          tasks: [],
+          total: 0,
+          limit: Number(url.searchParams.get('limit') ?? 100),
+          offset: Number(url.searchParams.get('offset') ?? 0),
+        }),
+      )
       return
     }
     if (url.pathname === '/api/v1/memories') {
@@ -2517,17 +2996,14 @@ test('plan board shows project names from a deep link without loading all plans'
   await expect(header.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
   await expect(header.getByRole('link', { name: 'Synthetic project', exact: true })).toBeVisible()
   expect(requests.filter((url) => url.pathname === '/api/v1/plans')).toHaveLength(0)
+  expect(requests.filter((url) => url.pathname === '/api/v1/projects')).toHaveLength(0)
+  expect(requests.filter((url) => url.pathname === '/api/v1/projects/1')).toHaveLength(1)
 
-  const projectListsBeforeSelection = requests.filter(
-    (url) => url.pathname === '/api/v1/projects',
-  ).length
   await page.goto('/#/plans/56')
   await expect(header.getByRole('heading', { name: 'Second synthetic plan' })).toBeVisible()
   await expect(header.getByRole('link', { name: 'Synthetic project', exact: true })).toBeVisible()
-  expect(requests.filter((url) => url.pathname === '/api/v1/projects')).toHaveLength(
-    projectListsBeforeSelection + 1,
-  )
-  expect(requests.some((url) => /^\/api\/v1\/projects\/\d+$/.test(url.pathname))).toBe(false)
+  expect(requests.filter((url) => url.pathname === '/api/v1/projects')).toHaveLength(0)
+  expect(requests.filter((url) => url.pathname === '/api/v1/projects/1')).toHaveLength(2)
   expect(requests.filter((url) => url.pathname === '/api/v1/plans')).toHaveLength(0)
 })
 
@@ -2850,9 +3326,11 @@ test('plan board keeps distinct project names across deep links and delayed look
     taskSummaries: [],
     taskDetails: [],
   })
-  await page.route('**/api/v1/projects', async (route) => {
+  await page.route('**/api/v1/projects/*', async (route) => {
     await gate
-    await route.fulfill(json({ projects: [alpha, beta], total: 2 })).catch(() => undefined)
+    const id = Number(new URL(route.request().url()).pathname.split('/').at(-1))
+    const project = id === 2 ? beta : alpha
+    await route.fulfill(json(project)).catch(() => undefined)
   })
 
   await page.goto('/#/plans/55')
@@ -2880,12 +3358,12 @@ test('plan content survives project lookup failure and names recover on retry', 
     taskSummaries: [],
     taskDetails: [],
   })
-  await page.route('**/api/v1/projects', async (route) => {
+  await page.route('**/api/v1/projects/1', async (route) => {
     if (!projectsAvailable) {
       await route.fulfill(json({ error: 'Project lookup failed' }, 500))
       return
     }
-    await route.fulfill(json({ projects: [syntheticProject], total: 1 }))
+    await route.fulfill(json(syntheticProject))
   })
 
   await page.goto('/#/plans/55')
@@ -2893,10 +3371,10 @@ test('plan content survives project lookup failure and names recover on retry', 
   await expect(header.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
   await expect(header.getByText('Project #1', { exact: true })).toBeVisible()
   await expect(header.getByText('Synthetic plan goal.')).toBeVisible()
-  await expect(page.getByText('Project options unavailable')).toBeVisible()
+  await expect(page.getByText('Project name unavailable')).toBeVisible()
 
   projectsAvailable = true
-  await page.getByRole('button', { name: 'Retry project options' }).click()
+  await page.getByRole('button', { name: 'Retry project name' }).click()
   await expect(header.getByRole('link', { name: 'Synthetic project', exact: true })).toBeVisible()
   await expect(header.getByText('Synthetic plan goal.')).toBeVisible()
 })
@@ -2972,4 +3450,362 @@ test('long unbroken project names wrap in resource details and plan headers', as
       expect(overflow).toBeLessThanOrEqual(1)
     }
   }
+})
+
+function pagedTasks(tasks: unknown[], url: URL): Record<string, unknown> {
+  const limit = Number(url.searchParams.get('limit') ?? 20)
+  const offset = Number(url.searchParams.get('offset') ?? 0)
+  return { tasks: tasks.slice(offset, offset + limit), total: tasks.length, limit, offset }
+}
+
+const manyTasks = Array.from({ length: 205 }, (_, index) => ({
+  ...syntheticTaskSummary,
+  id: 2001 + index,
+  title: `Synthetic board task ${2001 + index}`,
+  state: index < 200 ? 'todo' : 'done',
+}))
+
+test('plan board collects every summary page before showing a complete board', async ({ page }) => {
+  test.setTimeout(60_000)
+  let releaseLaterPage: (() => void) | undefined
+  const laterPageGate = new Promise<void>((resolve) => {
+    releaseLaterPage = resolve
+  })
+  const requests: URL[] = []
+  const plan = { ...syntheticPlan, task_count: 205 }
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [plan],
+    taskSummaries: manyTasks,
+  })
+  await page.route('**/api/v1/**', async (route) => {
+    const url = new URL(route.request().url())
+    requests.push(url)
+    if (url.pathname === '/api/v1/tasks' && Number(url.searchParams.get('offset') ?? 0) > 0) {
+      await laterPageGate
+    }
+    await route.fallback()
+  })
+
+  const laterPageRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/tasks' && url.searchParams.get('offset') === '100'
+  })
+  await page.goto('/#/plans/55')
+  await expect(page.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
+  await laterPageRequest
+  await expect(page.getByText('Loading plan tasks…')).toBeVisible()
+  await expect(page.locator('[data-plan-board] [data-task-id]')).toHaveCount(0)
+  await expect(
+    page.locator('[data-plan-header]').getByRole('link', { name: 'Synthetic project' }),
+  ).toBeVisible()
+
+  releaseLaterPage?.()
+  const board = page.locator('[data-plan-board]')
+  await expect(board.getByRole('link')).toHaveCount(205)
+  await expect(
+    page.getByRole('region', { name: 'Done', exact: true }).getByRole('link'),
+  ).toHaveCount(5)
+  await expect(
+    page.getByRole('region', { name: 'To do', exact: true }).getByRole('link'),
+  ).toHaveCount(200)
+  await expect(page.getByText('205 total')).toBeVisible()
+
+  const taskRequests = requests.filter((url) => url.pathname === '/api/v1/tasks')
+  expect(taskRequests.map((url) => url.searchParams.get('offset'))).toEqual(['0', '100', '200'])
+  expect(taskRequests.every((url) => url.searchParams.get('limit') === '100')).toBe(true)
+  expect(requests.filter((url) => url.pathname === '/api/v1/projects/1')).toHaveLength(1)
+  expect(requests.filter((url) => url.pathname === '/api/v1/projects')).toHaveLength(0)
+  expect(requests.some((url) => /^\/api\/v1\/tasks\/\d+$/.test(url.pathname))).toBe(false)
+})
+
+const boardFaults = [
+  {
+    fault: 'http',
+    mutate: () => ({ status: 503, body: { error: 'Synthetic later page failure' } }),
+  },
+  {
+    fault: 'duplicate',
+    mutate: (body: { tasks: object[] }) => ({
+      body: {
+        ...body,
+        tasks: [
+          { ...(body.tasks[0] as { id: number }), id: manyTasks[0]?.id },
+          ...body.tasks.slice(1),
+        ],
+      },
+    }),
+  },
+  { fault: 'empty', mutate: (body: object) => ({ body: { ...body, tasks: [] } }) },
+  { fault: 'changed-total', mutate: (body: object) => ({ body: { ...body, total: 204 } }) },
+  { fault: 'wrong-offset', mutate: (body: object) => ({ body: { ...body, offset: 0 } }) },
+  {
+    fault: 'legacy',
+    mutate: (body: Record<string, unknown>) => {
+      const { limit, ...rest } = body
+      void limit
+      return { body: rest }
+    },
+  },
+  {
+    fault: 'malformed-id',
+    mutate: (body: { tasks: object[] }) => ({
+      body: { ...body, tasks: [{ ...body.tasks[0], id: 'bad' }, ...body.tasks.slice(1)] },
+    }),
+  },
+] as const
+
+for (const { fault, mutate } of boardFaults) {
+  test(`plan board rejects a ${fault} later page and retries from the first page`, async ({
+    page,
+  }) => {
+    test.setTimeout(60_000)
+    let faultEnabled = true
+    const plan = { ...syntheticPlan, task_count: 205 }
+    await installBaseApi(page, {
+      projects: [syntheticProject],
+      plans: [plan],
+      taskSummaries: manyTasks,
+    })
+    await page.route('**/api/v1/tasks**', async (route) => {
+      const url = new URL(route.request().url())
+      if (url.pathname !== '/api/v1/tasks') {
+        await route.fallback()
+        return
+      }
+      const body = pagedTasks(manyTasks, url)
+      const offset = Number(url.searchParams.get('offset') ?? 0)
+      if (faultEnabled && offset > 0) {
+        const result = mutate(body as never) as {
+          status?: number
+          body: Record<string, unknown>
+        }
+        await route.fulfill(json(result.body, result.status ?? 200))
+        return
+      }
+      await route.fulfill(json(body))
+    })
+
+    await page.goto('/#/plans/55')
+    await expect(page.getByRole('heading', { name: 'Synthetic plan' })).toBeVisible()
+    await expect(page.getByText('Could not load tasks')).toBeVisible()
+    await expect(page.locator('[data-plan-board] [data-task-id]')).toHaveCount(0)
+    if (fault === 'legacy') {
+      await expect(page.getByRole('alert')).toContainText('v0.8.0')
+    }
+
+    faultEnabled = false
+    const retryRequest = page.waitForRequest((request) => {
+      const url = new URL(request.url())
+      return url.pathname === '/api/v1/tasks' && url.searchParams.get('offset') === '0'
+    })
+    await page.getByRole('alert').getByRole('button', { name: 'Retry' }).click()
+    await retryRequest
+    await expect(page.locator('[data-plan-board]').getByRole('link')).toHaveCount(205)
+    await expect(page.getByRole('alert')).toHaveCount(0)
+    await expect(page.getByText('Could not load tasks')).toHaveCount(0)
+  })
+}
+
+test('plan board keeps the last complete board when a refresh needs a later page', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  let failLaterPage = false
+  const plan = { ...syntheticPlan, task_count: 205 }
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [plan],
+    taskSummaries: manyTasks,
+  })
+  await page.route('**/api/v1/tasks**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname !== '/api/v1/tasks') {
+      await route.fallback()
+      return
+    }
+    if (failLaterPage && Number(url.searchParams.get('offset') ?? 0) > 0) {
+      await route.fulfill(json({ error: 'Synthetic refresh page failure' }, 503))
+      return
+    }
+    await route.fulfill(json(pagedTasks(manyTasks, url)))
+  })
+
+  await page.goto('/#/plans/55')
+  await expect(page.locator('[data-plan-board]').getByRole('link')).toHaveCount(205)
+
+  failLaterPage = true
+  await page.getByRole('button', { name: 'Refresh board' }).click()
+  await expect(page.getByRole('alert')).toContainText('Could not refresh tasks')
+  await expect(page.locator('[data-plan-board]').getByRole('link')).toHaveCount(205)
+  await expect(page.getByText(/Showing previous task summaries/)).toBeVisible()
+  await expect(
+    page.getByRole('region', { name: 'Done', exact: true }).getByRole('link'),
+  ).toHaveCount(5)
+
+  failLaterPage = false
+  const retryRequest = page.waitForRequest((request) => {
+    const url = new URL(request.url())
+    return url.pathname === '/api/v1/tasks' && url.searchParams.get('offset') === '0'
+  })
+  await page.getByRole('alert').getByRole('button', { name: 'Retry' }).click()
+  await retryRequest
+  await expect(page.getByRole('alert')).toHaveCount(0)
+  await expect(page.locator('[data-plan-board]').getByRole('link')).toHaveCount(205)
+})
+
+test('leaving a plan cancels its pending task pages and does not leak them', async ({ page }) => {
+  test.setTimeout(60_000)
+  let releaseFirst: (() => void) | undefined
+  const firstGate = new Promise<void>((resolve) => {
+    releaseFirst = resolve
+  })
+  const firstPlan = { ...syntheticPlan, id: 55, title: 'First pending plan' }
+  const secondPlan = { ...syntheticPlan, id: 56, title: 'Second pending plan' }
+  const firstTask = { ...syntheticTaskSummary, id: 3001, title: 'First plan pending task' }
+  await installBaseApi(page, {
+    projects: [syntheticProject],
+    plans: [firstPlan, secondPlan],
+    taskSummaries: [firstTask],
+  })
+  await page.route('**/api/v1/tasks**', async (route) => {
+    const url = new URL(route.request().url())
+    if (url.pathname !== '/api/v1/tasks' || url.searchParams.get('plan_id') !== '55') {
+      await route.fallback()
+      return
+    }
+    await firstGate
+    await route.fulfill(json(pagedTasks([firstTask], url))).catch(() => undefined)
+  })
+
+  await page.goto('/#/plans/55')
+  await expect(page.getByRole('heading', { name: 'First pending plan' })).toBeVisible()
+  await page.evaluate(() => {
+    window.location.hash = '#/plans/56'
+  })
+  await expect(page.getByRole('heading', { name: 'Second pending plan' })).toBeVisible()
+  releaseFirst?.()
+  await expect(page.getByText('First plan pending task')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: 'Second pending plan' })).toBeVisible()
+  await expect(page.locator('[data-plan-board]')).toBeVisible()
+})
+
+test('project options load late pages for Files and Plans without a reload on paging', async ({
+  page,
+}) => {
+  test.setTimeout(60_000)
+  const projects = Array.from({ length: 205 }, (_, index) => ({
+    ...syntheticProject,
+    id: 1205 - index,
+    name: `Synthetic option project ${1205 - index}`,
+  }))
+  const plan = { ...syntheticPlan, id: 45, title: 'Synthetic option plan', project_id: 1001 }
+  const requests: URL[] = []
+  await installBaseApi(page, {
+    capabilities: {
+      schema_version: 1,
+      capabilities: { planning: true, files: true, skills: false, activity_stream: false },
+    },
+    projects,
+    plans: [plan],
+    files: [syntheticFile],
+  })
+  await page.route('**/api/v1/**', async (route) => {
+    requests.push(new URL(route.request().url()))
+    await route.fallback()
+  })
+
+  await page.goto('/#/files?project=1001')
+  const select = page.getByRole('combobox', { name: 'Project filter', exact: true })
+  await expect(select.getByRole('option')).toHaveCount(206)
+  await expect(select.locator('option:checked')).toHaveText('Synthetic option project 1001')
+  const optionRequests = () => requests.filter((url) => url.pathname === '/api/v1/projects')
+  expect(
+    optionRequests()
+      .filter((url) => url.searchParams.get('limit') === '100')
+      .map((url) => url.searchParams.get('offset')),
+  ).toEqual(['0', '100', '200'])
+
+  const before = optionRequests().length
+  await page.getByRole('textbox', { name: 'MIME type filter' }).fill('image/png')
+  await page.getByRole('button', { name: 'Apply MIME filter' }).click()
+  await expect(page).toHaveURL(/#\/files\?project=1001&mime=image%2Fpng$/)
+  expect(optionRequests()).toHaveLength(before)
+
+  await page.goto('/#/plans')
+  await expect(page.getByRole('heading', { name: 'Plans' })).toBeVisible()
+  await expect(page.getByRole('list', { name: 'Plans' }).getByRole('link').first()).toContainText(
+    'Synthetic option plan',
+  )
+  await expect(
+    page.getByRole('list', { name: 'Plans' }).getByText('Synthetic option project 1001'),
+  ).toBeVisible()
+})
+
+test('documents rejects a page without total and never renders NaN', async ({ page }) => {
+  let missingTotal = true
+  await installBaseApi(page)
+  await page.route('**/api/v1/documents?**', (route) => {
+    const url = new URL(route.request().url())
+    if (missingTotal) {
+      route.fulfill(
+        json({
+          documents: [{ id: 1, title: 'Synthetic untotalled document' }],
+          limit: Number(url.searchParams.get('limit') ?? 20),
+          offset: Number(url.searchParams.get('offset') ?? 0),
+        }),
+      )
+      return
+    }
+    route.fulfill(
+      json({
+        documents: [{ id: 1, title: 'Synthetic recovered document' }],
+        total: 1,
+        limit: Number(url.searchParams.get('limit') ?? 20),
+        offset: Number(url.searchParams.get('offset') ?? 0),
+      }),
+    )
+  })
+
+  await page.goto('/#/documents')
+  const alert = page.getByRole('alert')
+  await expect(alert).toContainText('Could not load documents')
+  await expect(alert).toContainText('v0.8.0')
+  await expect(page.getByText(/NaN/)).toHaveCount(0)
+  await expect(page.getByRole('list', { name: 'Documents' })).toHaveCount(0)
+
+  missingTotal = false
+  await alert.getByRole('button', { name: 'Retry' }).click()
+  await expect(page.getByRole('link', { name: 'Synthetic recovered document' })).toBeVisible()
+  await expect(alert).toHaveCount(0)
+})
+
+test('documents reports the rendered row count on a short page', async ({ page }) => {
+  const shortRows = Array.from({ length: 4 }, (_, index) => ({
+    id: 41 + index,
+    title: `Synthetic short page document ${41 + index}`,
+    document_type: 'text',
+    project_id: 1,
+    created_at: '2026-01-01T00:00:00Z',
+    updated_at: '2026-01-02T00:00:00Z',
+  }))
+  await installBaseApi(page)
+  await page.route('**/api/v1/documents?**', (route) => {
+    const url = new URL(route.request().url())
+    route.fulfill(
+      json({
+        documents: shortRows,
+        total: 45,
+        limit: Number(url.searchParams.get('limit') ?? 20),
+        offset: Number(url.searchParams.get('offset') ?? 0),
+      }),
+    )
+  })
+
+  await page.goto('/#/documents?page=3')
+  const list = page.getByRole('list', { name: 'Documents' })
+  await expect(list.getByRole('link')).toHaveCount(4)
+  await expect(page.getByText('Showing 41–44 of 45')).toBeVisible()
+  await expect(page.getByText('Showing 41–45 of 45')).toHaveCount(0)
+  await expect(page.getByText(/NaN/)).toHaveCount(0)
 })

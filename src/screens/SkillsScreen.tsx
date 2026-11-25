@@ -1,11 +1,14 @@
 import { getSkill, getSkillLinks, listSkills } from '../api/client'
 import { DetailField } from '../components/DetailField'
 import { EmptyPanel, ErrorPanel } from '../components/Feedback'
+import { OutOfRangePanel } from '../components/OutOfRangePanel'
+import { PaginationBar } from '../components/PaginationBar'
 import { ProjectSelect } from '../components/ProjectSelect'
 import { ResourceLayout } from '../components/ResourceLayout'
 import { useApiData } from '../hooks/useApiData'
 import { type CapabilityState, featureState } from '../hooks/useCapabilities'
 import { formatDate } from '../lib/format'
+import { RESOURCE_PAGE_SIZE, resourceOffset, resourceTotalPages } from '../lib/resourcePages'
 import type { SkillsRoute } from '../router'
 import { navigate, skillsHref } from '../router'
 
@@ -115,13 +118,24 @@ export default function SkillsScreen({
 }) {
   const skillsState = featureState(capabilities, 'skills')
   const canRead = skillsState === 'enabled' || skillsState === 'unknown'
+  const offset = resourceOffset(route.page, RESOURCE_PAGE_SIZE)
   const list = useApiData(
-    `skills-${route.projectId ?? ''}-${route.importanceMin ?? ''}`,
+    `skills-${route.page}-${route.projectId ?? ''}-${route.importanceMin ?? ''}`,
     (signal) =>
-      listSkills({ projectId: route.projectId, importanceThreshold: route.importanceMin }, signal),
+      listSkills(
+        {
+          projectId: route.projectId,
+          importanceThreshold: route.importanceMin,
+          limit: RESOURCE_PAGE_SIZE,
+          offset,
+        },
+        signal,
+      ),
     canRead,
   )
   const items = list.state.status === 'ready' ? list.state.data.skills : []
+  const total = list.state.status === 'ready' ? list.state.data.total : 0
+  const totalPages = resourceTotalPages(total, RESOURCE_PAGE_SIZE)
 
   function update(params: { projectId?: number | null; importanceMin?: number | null }) {
     navigate(
@@ -174,7 +188,11 @@ export default function SkillsScreen({
         }
         detailTitle="Skill detail"
         selectedId={route.skillId}
-        backHref={skillsHref({ projectId: route.projectId, importanceMin: route.importanceMin })}
+        backHref={skillsHref({
+          page: route.page,
+          projectId: route.projectId,
+          importanceMin: route.importanceMin,
+        })}
         list={
           <>
             <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2.5">
@@ -214,11 +232,28 @@ export default function SkillsScreen({
                 onRetry={list.retry}
               />
             )}
-            {list.state.status === 'ready' && items.length === 0 && (
-              <EmptyPanel title="No skills found">
-                <p>Try a different project or importance threshold.</p>
-              </EmptyPanel>
-            )}
+            {list.state.status === 'ready' &&
+              items.length === 0 &&
+              (total > 0 ? (
+                <OutOfRangePanel
+                  page={route.page}
+                  totalPages={totalPages}
+                  itemName="skills"
+                  firstHref={skillsHref({
+                    projectId: route.projectId,
+                    importanceMin: route.importanceMin,
+                  })}
+                  lastHref={skillsHref({
+                    page: totalPages,
+                    projectId: route.projectId,
+                    importanceMin: route.importanceMin,
+                  })}
+                />
+              ) : (
+                <EmptyPanel title="No skills found">
+                  <p>Try a different project or importance threshold.</p>
+                </EmptyPanel>
+              ))}
             {items.length > 0 && (
               <ul aria-label="Skills" className="divide-y divide-line">
                 {items.map((skill) => (
@@ -226,6 +261,7 @@ export default function SkillsScreen({
                     <a
                       href={skillsHref({
                         skillId: skill.id,
+                        page: route.page,
                         projectId: route.projectId,
                         importanceMin: route.importanceMin,
                       })}
@@ -247,6 +283,23 @@ export default function SkillsScreen({
                   </li>
                 ))}
               </ul>
+            )}
+            {items.length > 0 && (
+              <PaginationBar
+                page={route.page}
+                totalPages={totalPages}
+                total={total}
+                limit={RESOURCE_PAGE_SIZE}
+                received={items.length}
+                label="Skill"
+                hrefForPage={(page) =>
+                  skillsHref({
+                    page,
+                    projectId: route.projectId,
+                    importanceMin: route.importanceMin,
+                  })
+                }
+              />
             )}
           </>
         }

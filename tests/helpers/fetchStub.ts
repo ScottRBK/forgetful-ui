@@ -63,3 +63,14 @@ export function deferred<T>() {
   })
   return { promise, resolve, reject }
 }
+
+export function pagedResponse<T>(items: T[], request: StubRequest, key: string): Response {
+  const limit = Number(request.url.searchParams.get('limit') ?? 20)
+  const offset = Number(request.url.searchParams.get('offset') ?? 0)
+  return jsonResponse({
+    [key]: items.slice(offset, offset + limit),
+    total: items.length,
+    limit,
+    offset,
+  })
+}

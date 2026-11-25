@@ -362,30 +362,44 @@ export interface ActivityEventRecord {
 export interface ProjectListResponse {
   projects: ProjectRecord[]
   total: number
+  limit: number
+  offset: number
 }
 export interface PlanListResponse {
   plans: PlanRecord[]
   total: number
+  limit: number
+  offset: number
 }
 export interface TaskListResponse {
   tasks: TaskSummaryRecord[]
   total: number
+  limit: number
+  offset: number
 }
 export interface DocumentListResponse {
   documents: DocumentRecord[]
   total: number
+  limit: number
+  offset: number
 }
 export interface CodeArtifactListResponse {
   code_artifacts: CodeArtifactRecord[]
   total: number
+  limit: number
+  offset: number
 }
 export interface FileListResponse {
   files: FileRecord[]
   total: number
+  limit: number
+  offset: number
 }
 export interface SkillListResponse {
   skills: SkillRecord[]
   total: number
+  limit: number
+  offset: number
 }
 export interface ActivityListResponse {
   events: ActivityEventRecord[]

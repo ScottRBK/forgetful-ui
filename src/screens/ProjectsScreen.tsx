@@ -2,9 +2,12 @@ import { useEffect, useState } from 'react'
 import { getProject, listProjects } from '../api/client'
 import { DetailField } from '../components/DetailField'
 import { EmptyPanel, ErrorPanel } from '../components/Feedback'
+import { OutOfRangePanel } from '../components/OutOfRangePanel'
+import { PaginationBar } from '../components/PaginationBar'
 import { ResourceLayout } from '../components/ResourceLayout'
 import { useApiData } from '../hooks/useApiData'
 import { formatDate } from '../lib/format'
+import { RESOURCE_PAGE_SIZE, resourceOffset, resourceTotalPages } from '../lib/resourcePages'
 import type { ProjectsRoute } from '../router'
 import { memoriesHref, navigate, projectsHref } from '../router'
 
@@ -68,10 +71,23 @@ export default function ProjectsScreen({ route }: { route: ProjectsRoute }) {
   const [repoInput, setRepoInput] = useState(route.repoName ?? '')
   useEffect(() => setRepoInput(route.repoName ?? ''), [route.repoName])
 
-  const list = useApiData(`projects-${route.status ?? ''}-${route.repoName ?? ''}`, (signal) =>
-    listProjects({ status: route.status, repoName: route.repoName }, signal),
+  const offset = resourceOffset(route.page, RESOURCE_PAGE_SIZE)
+  const list = useApiData(
+    `projects-${route.page}-${route.status ?? ''}-${route.repoName ?? ''}`,
+    (signal) =>
+      listProjects(
+        {
+          status: route.status,
+          repoName: route.repoName,
+          limit: RESOURCE_PAGE_SIZE,
+          offset,
+        },
+        signal,
+      ),
   )
   const projects = list.state.status === 'ready' ? list.state.data.projects : []
+  const total = list.state.status === 'ready' ? list.state.data.total : 0
+  const totalPages = resourceTotalPages(total, RESOURCE_PAGE_SIZE)
 
   function updateRoute(params: { status?: string | null; repoName?: string | null }) {
     navigate(
@@ -93,7 +109,7 @@ export default function ProjectsScreen({ route }: { route: ProjectsRoute }) {
       }
       detailTitle="Project detail"
       selectedId={route.projectId}
-      backHref={projectsHref({ status: route.status, repoName: route.repoName })}
+      backHref={projectsHref({ page: route.page, status: route.status, repoName: route.repoName })}
       list={
         <>
           <div className="flex flex-wrap items-center gap-2 border-b border-line px-3 py-2.5">
@@ -145,11 +161,25 @@ export default function ProjectsScreen({ route }: { route: ProjectsRoute }) {
               onRetry={list.retry}
             />
           )}
-          {list.state.status === 'ready' && projects.length === 0 && (
-            <EmptyPanel title="No projects found">
-              <p>Try a different status or repository filter.</p>
-            </EmptyPanel>
-          )}
+          {list.state.status === 'ready' &&
+            projects.length === 0 &&
+            (total > 0 ? (
+              <OutOfRangePanel
+                page={route.page}
+                totalPages={totalPages}
+                itemName="projects"
+                firstHref={projectsHref({ status: route.status, repoName: route.repoName })}
+                lastHref={projectsHref({
+                  page: totalPages,
+                  status: route.status,
+                  repoName: route.repoName,
+                })}
+              />
+            ) : (
+              <EmptyPanel title="No projects found">
+                <p>Try a different status or repository filter.</p>
+              </EmptyPanel>
+            ))}
           {projects.length > 0 && (
             <ul aria-label="Projects" className="divide-y divide-line">
               {projects.map((project) => (
@@ -157,6 +187,7 @@ export default function ProjectsScreen({ route }: { route: ProjectsRoute }) {
                   <a
                     href={projectsHref({
                       projectId: project.id,
+                      page: route.page,
                       status: route.status,
                       repoName: route.repoName,
                     })}
@@ -184,6 +215,23 @@ export default function ProjectsScreen({ route }: { route: ProjectsRoute }) {
                 </li>
               ))}
             </ul>
+          )}
+          {projects.length > 0 && (
+            <PaginationBar
+              page={route.page}
+              totalPages={totalPages}
+              total={total}
+              limit={RESOURCE_PAGE_SIZE}
+              received={projects.length}
+              label="Project"
+              hrefForPage={(page) =>
+                projectsHref({
+                  page,
+                  status: route.status,
+                  repoName: route.repoName,
+                })
+              }
+            />
           )}
         </>
       }
