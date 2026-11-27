@@ -21,10 +21,24 @@ import {
   normalizeGraphNodeTypes,
   normalizeHiddenGraphNodeTypes,
 } from '../lib/graphStyle'
-import type { GraphRoute } from '../router'
+import type { GraphRoute, MemoryQuery } from '../router'
 import { graphHref, memoriesHref, navigate } from '../router'
 
 const GraphCanvas = lazy(() => import('../components/GraphCanvas'))
+
+// Every outgoing link carries the full memory filter context, so returning to the
+// list never silently changes the request it makes.
+function memoryQueryContext(route: MemoryQuery): MemoryQuery {
+  return {
+    sortBy: route.sortBy,
+    sortOrder: route.sortOrder,
+    importanceMin: route.importanceMin,
+    importanceMax: route.importanceMax,
+    q: route.q,
+    updatedFrom: route.updatedFrom,
+    updatedTo: route.updatedTo,
+  }
+}
 
 const MAX_NODES = 100
 const OVERVIEW_PAGE_SIZE = 100
@@ -736,9 +750,7 @@ function OverviewGraphView({
         projectId: params.projectId === undefined ? route.projectId : params.projectId,
         nodeTypes: nextTypes,
         hiddenNodeTypes: normalizeHiddenGraphNodeTypes(hidden),
-        sortBy: route.sortBy,
-        sortOrder: route.sortOrder,
-        importanceMin: route.importanceMin,
+        ...memoryQueryContext(route),
       }),
     )
   }
@@ -778,9 +790,7 @@ function OverviewGraphView({
             href={memoriesHref({
               page: route.page,
               projectId: route.projectId,
-              sortBy: route.sortBy,
-              sortOrder: route.sortOrder,
-              importanceMin: route.importanceMin,
+              ...memoryQueryContext(route),
             })}
             className="btn-secondary"
           >
@@ -966,9 +976,7 @@ function OverviewGraphView({
                 projectId: route.projectId,
                 nodeTypes: effectiveTypes,
                 hiddenNodeTypes: route.hiddenNodeTypes,
-                sortBy: route.sortBy,
-                sortOrder: route.sortOrder,
-                importanceMin: route.importanceMin,
+                ...memoryQueryContext(route),
               })
             }
           />
@@ -1030,9 +1038,7 @@ function FocusedGraphView({ route, memoryId }: { route: GraphRoute; memoryId: nu
     projectId: route.projectId,
     nodeTypes: route.nodeTypes,
     hiddenNodeTypes: route.hiddenNodeTypes,
-    sortBy: route.sortBy,
-    sortOrder: route.sortOrder,
-    importanceMin: route.importanceMin,
+    ...memoryQueryContext(route),
   })
 
   return (
@@ -1044,9 +1050,7 @@ function FocusedGraphView({ route, memoryId }: { route: GraphRoute; memoryId: nu
               memoryId,
               page: route.page,
               projectId: route.projectId,
-              sortBy: route.sortBy,
-              sortOrder: route.sortOrder,
-              importanceMin: route.importanceMin,
+              ...memoryQueryContext(route),
             })}
             className="btn-secondary"
           >
@@ -1087,9 +1091,7 @@ function FocusedGraphView({ route, memoryId }: { route: GraphRoute; memoryId: nu
                       projectId: route.projectId,
                       nodeTypes: route.nodeTypes,
                       hiddenNodeTypes: route.hiddenNodeTypes,
-                      sortBy: route.sortBy,
-                      sortOrder: route.sortOrder,
-                      importanceMin: route.importanceMin,
+                      ...memoryQueryContext(route),
                     })}
                     aria-current={active ? 'page' : undefined}
                     aria-label={`Depth ${depth}`}
@@ -1133,7 +1135,11 @@ function FocusedGraphView({ route, memoryId }: { route: GraphRoute; memoryId: nu
             Memory #{memoryId} is unavailable, so no graph can be loaded.
           </p>
           <a
-            href={memoriesHref({})}
+            href={memoriesHref({
+              page: route.page,
+              projectId: route.projectId,
+              ...memoryQueryContext(route),
+            })}
             className="mt-3 inline-block text-[12px] font-medium text-teal"
           >
             Return to memories
