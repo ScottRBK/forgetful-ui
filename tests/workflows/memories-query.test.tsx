@@ -1,6 +1,6 @@
 import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import App from '../../src/App'
 import {
   deferred,
@@ -9,7 +9,7 @@ import {
   pagedResponse,
   type RouteStub,
 } from '../helpers/fetchStub'
-import { memory, project } from '../helpers/synthetic'
+import { memory, project, subgraph } from '../helpers/synthetic'
 
 const connectionRoutes: RouteStub[] = [
   { match: '/health', handler: () => jsonResponse({ status: 'healthy' }) },
@@ -225,5 +225,156 @@ describe('Supported memory sorting and filtering', () => {
     await new Promise((resolve) => setTimeout(resolve, 20))
     expect(screen.queryByText('Synthetic stale sort')).not.toBeInTheDocument()
     expect(screen.getByText('Synthetic fresh sort')).toBeInTheDocument()
+  })
+})
+
+describe('Graph filter context', () => {
+  // jsdom has no ResizeObserver; the graph canvas only observes its container.
+  beforeEach(() => {
+    vi.stubGlobal(
+      'ResizeObserver',
+      class {
+        observe(): void {}
+        unobserve(): void {}
+        disconnect(): void {}
+      },
+    )
+  })
+
+  const filters = {
+    page: '2',
+    sort: 'importance',
+    order: 'asc',
+    project: '7',
+    importance: '8',
+    max: '8',
+    q: 'teal notes',
+    from: '2026-01-01T00:00:00.000Z',
+    to: '2026-06-01T00:00:00.000Z',
+  }
+  const listQuery = new URLSearchParams(filters).toString()
+
+  function expectFilterContext(hash: string): void {
+    const params = new URLSearchParams(hash.split('?')[1] ?? '')
+    for (const [key, value] of Object.entries(filters)) {
+      expect(params.get(key), `hash parameter ${key}`).toBe(value)
+    }
+  }
+
+  it('keeps search, max importance and the updated range through every graph link', async () => {
+    window.history.replaceState(null, '', `/#/memories/101?${listQuery}`)
+    const fetcher = installFetchStub([
+      ...connectionRoutes,
+      {
+        match: '/.well-known',
+        handler: () =>
+          jsonResponse({
+            schema_version: 1,
+            capabilities: { planning: true, skills: true, files: true, activity_stream: false },
+          }),
+      },
+      {
+        match: '/api/v1/memories',
+        handler: () =>
+          jsonResponse({
+            memories: [memory(101, { title: 'Synthetic context row' })],
+            total: 65,
+            limit: 20,
+            offset: 20,
+          }),
+      },
+      {
+        match: '/api/v1/memories/101',
+        handler: () => jsonResponse(memory(101, { title: 'Synthetic context row' })),
+      },
+      { match: '/api/v1/graph/subgraph', handler: () => jsonResponse(subgraph()) },
+      {
+        match: '/api/v1/graph',
+        handler: () =>
+          jsonResponse({
+            nodes: [
+              {
+                id: 'memory_101',
+                type: 'memory',
+                label: 'Synthetic context row',
+                data: { importance: 5 },
+              },
+            ],
+            edges: [],
+            meta: {
+              memory_count: 1,
+              total_memory_count: 1,
+              offset: 0,
+              limit: 100,
+              has_more: false,
+              entity_count: 0,
+              project_count: 0,
+              document_count: 0,
+              code_artifact_count: 0,
+              file_count: 0,
+              skill_count: 0,
+              plan_count: 0,
+              task_count: 0,
+              edge_count: 0,
+            },
+          }),
+      },
+    ])
+
+    render(<App />)
+    await screen.findByRole('heading', { name: 'Synthetic context row' })
+
+    const openGraph = screen.getByRole('link', { name: 'Open graph' })
+    const openGraphHref = openGraph.getAttribute('href') ?? ''
+    expect(openGraphHref.startsWith('#/graph?memory=101&')).toBe(true)
+    expectFilterContext(openGraphHref)
+
+    const user = userEvent.setup()
+    await user.click(openGraph)
+
+    const backToMemory = await screen.findByRole('link', { name: 'Back to memory' })
+    const backHref = backToMemory.getAttribute('href') ?? ''
+    expect(backHref.startsWith('#/memories/101?')).toBe(true)
+    expectFilterContext(backHref)
+    expectFilterContext(screen.getByRole('link', { name: 'Overview' }).getAttribute('href') ?? '')
+    expectFilterContext(screen.getByRole('link', { name: 'Depth 2' }).getAttribute('href') ?? '')
+
+    await user.click(screen.getByRole('link', { name: 'Depth 2' }))
+    await waitFor(() => {
+      expect(window.location.hash).toContain('depth=2')
+    })
+    expectFilterContext(window.location.hash)
+
+    await user.click(screen.getByRole('link', { name: 'Overview' }))
+    await waitFor(() => {
+      expect(window.location.hash.startsWith('#/graph?')).toBe(true)
+      expect(window.location.hash).not.toContain('memory=')
+    })
+    expectFilterContext(window.location.hash)
+
+    await user.click(await screen.findByRole('button', { name: /Synthetic context row/ }))
+    const focus = await screen.findByRole('link', { name: 'Focus neighbourhood' })
+    const focusHref = focus.getAttribute('href') ?? ''
+    expect(focusHref.startsWith('#/graph?memory=101&')).toBe(true)
+    expectFilterContext(focusHref)
+
+    await user.click(screen.getByRole('link', { name: 'Back to memories' }))
+    await waitFor(() => {
+      expect(window.location.hash.startsWith('#/memories?')).toBe(true)
+    })
+    expectFilterContext(window.location.hash)
+
+    await waitFor(() => {
+      expect(memoryRequest(fetcher)?.url.searchParams.get('q')).toBe('teal notes')
+    })
+    const request = memoryRequest(fetcher)
+    expect(request?.url.searchParams.get('offset')).toBe('20')
+    expect(request?.url.searchParams.get('project_id')).toBe('7')
+    expect(request?.url.searchParams.get('sort_by')).toBe('importance')
+    expect(request?.url.searchParams.get('sort_order')).toBe('asc')
+    expect(request?.url.searchParams.get('importance_min')).toBe('8')
+    expect(request?.url.searchParams.get('importance_max')).toBe('8')
+    expect(request?.url.searchParams.get('updated_from')).toBe(filters.from)
+    expect(request?.url.searchParams.get('updated_to')).toBe(filters.to)
   })
 })

@@ -677,24 +677,67 @@ test('preserves sort and filter context through Graph and back', async ({ page }
     },
   })
 
-  await page.goto('/#/memories/1601?page=2&project=7&sort=importance&order=asc&importance=8')
+  const filters = {
+    page: '2',
+    sort: 'importance',
+    order: 'asc',
+    project: '7',
+    importance: '8',
+    max: '8',
+    q: 'teal notes',
+    from: '2026-01-01T00:00:00.000Z',
+    to: '2026-06-01T00:00:00.000Z',
+  }
+  const listQuery = new URLSearchParams(filters).toString()
+  const hashQuery = () => new URLSearchParams(new URL(page.url()).hash.split('?')[1] ?? '')
+  const expectFilterContext = async () => {
+    const params = hashQuery()
+    for (const [key, value] of Object.entries(filters)) {
+      expect(params.get(key), `hash parameter ${key}`).toBe(value)
+    }
+  }
+
+  await page.goto(`/#/memories/1601?${listQuery}`)
   await expect(page.getByRole('heading', { name: row.title })).toBeVisible()
   await page.getByRole('link', { name: 'Open graph' }).click()
-  await expect(page).toHaveURL(
-    /#\/graph\?memory=1601&page=2&sort=importance&order=asc&project=7&importance=8$/,
-  )
+  await expect(page).toHaveURL(/#\/graph\?memory=1601&/)
+  await expectFilterContext()
   await expect(page.locator('canvas')).toBeVisible()
 
   await page.getByRole('link', { name: 'Back to memory' }).click()
-  await expect(page).toHaveURL(
-    /#\/memories\/1601\?page=2&sort=importance&order=asc&project=7&importance=8$/,
-  )
+  await expect(page).toHaveURL(/#\/memories\/1601\?/)
+  await expectFilterContext()
+  const returnedList = log.filter((entry) => entry.url.pathname === '/api/v1/memories').at(-1)
+  expect(returnedList?.url.searchParams.get('importance_max')).toBe('8')
+
+  await page.getByRole('link', { name: 'Open graph' }).click()
+  await expect(page).toHaveURL(/#\/graph\?memory=1601&/)
+
+  for (const depth of ['2', '3', '1']) {
+    await page.getByRole('link', { name: `Depth ${depth}` }).click()
+    await expect(hashQuery().get('depth')).toBe(depth === '1' ? null : depth)
+    await expectFilterContext()
+  }
+
+  await page.getByRole('link', { name: 'Overview' }).click()
+  await expect(page).toHaveURL(/#\/graph\?/)
+  expect(hashQuery().has('memory')).toBe(false)
+  await expectFilterContext()
+
+  await page.getByRole('link', { name: 'Back to memories' }).click()
+  await expect(page).toHaveURL(/#\/memories\?/)
+  await expectFilterContext()
+
   const lastList = log.filter((entry) => entry.url.pathname === '/api/v1/memories').at(-1)
   expect(lastList?.url.searchParams.get('offset')).toBe('20')
   expect(lastList?.url.searchParams.get('project_id')).toBe('7')
   expect(lastList?.url.searchParams.get('sort_by')).toBe('importance')
   expect(lastList?.url.searchParams.get('sort_order')).toBe('asc')
   expect(lastList?.url.searchParams.get('importance_min')).toBe('8')
+  expect(lastList?.url.searchParams.get('importance_max')).toBe('8')
+  expect(lastList?.url.searchParams.get('q')).toBe('teal notes')
+  expect(lastList?.url.searchParams.get('updated_from')).toBe(filters.from)
+  expect(lastList?.url.searchParams.get('updated_to')).toBe(filters.to)
 })
 
 test('does not call an importance-filtered empty result an empty instance', async ({ page }) => {
