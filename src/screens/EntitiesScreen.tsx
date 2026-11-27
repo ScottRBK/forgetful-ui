@@ -2,6 +2,7 @@ import { getEntity, getEntityMemories, getEntityRelationships, listEntities } fr
 import {
   ENTITY_TYPE_OPTIONS,
   type EntityRelationshipRecord,
+  type EntitySummary,
   type EntityTypeName,
 } from '../api/types'
 import { DetailField } from '../components/DetailField'
@@ -30,30 +31,23 @@ function RelatedEntityLink({
   relationship,
   selfId,
   route,
+  summaries,
 }: {
   relationship: EntityRelationshipRecord
   selfId: number
   route: EntitiesRoute
+  summaries: Map<number, EntitySummary>
 }) {
   const relatedId =
     relationship.source_entity_id === selfId
       ? relationship.target_entity_id
       : relationship.source_entity_id
-  const related = useApiData(`entity-label-${relatedId}`, (signal) => getEntity(relatedId, signal))
   const direction = relationship.source_entity_id === selfId ? 'outgoing' : 'incoming'
+  const summary = summaries.get(relatedId)
 
-  if (related.state.status === 'loading') {
-    return (
-      <li className="rounded px-2 py-2 text-[11px] text-muted" aria-busy="true">
-        Loading related entity…
-      </li>
-    )
-  }
-
-  const failed = related.state.status === 'error'
-  const name = related.state.status === 'ready' ? related.state.data.name : `Entity #${relatedId}`
-  const type = related.state.status === 'ready' ? related.state.data.entity_type : '—'
-
+  // Names come from the entity summaries the list already loaded. A related
+  // entity outside that page stays an id-only link: fetching it to print a name
+  // would be an automatic detail sweep for a record nobody selected.
   return (
     <li>
       <a
@@ -64,19 +58,28 @@ function RelatedEntityLink({
           focus-visible:outline-teal-300
         `}
       >
-        <span className="block text-[12px] font-medium text-ink">{name}</span>
+        <span className="block text-[12px] font-medium text-ink">
+          {summary?.name ?? `Entity #${relatedId}`}
+        </span>
         <span className="mt-0.5 flex flex-wrap gap-1.5 text-[10px] text-muted">
-          <span>{type}</span>
+          <span>{summary?.entity_type ?? '—'}</span>
           <span>{relationship.relationship_type}</span>
           <span>{direction}</span>
-          {failed && <span>lookup failed</span>}
         </span>
       </a>
     </li>
   )
 }
 
-function EntityDetail({ entityId, route }: { entityId: number; route: EntitiesRoute }) {
+function EntityDetail({
+  entityId,
+  route,
+  summaries,
+}: {
+  entityId: number
+  route: EntitiesRoute
+  summaries: Map<number, EntitySummary>
+}) {
   const detail = useApiData(`entity-${entityId}`, (signal) => getEntity(entityId, signal))
   const memories = useApiData(`entity-memories-${entityId}`, (signal) =>
     getEntityMemories(entityId, signal),
@@ -216,6 +219,7 @@ function EntityDetail({ entityId, route }: { entityId: number; route: EntitiesRo
                   relationship={relationship}
                   selfId={entityId}
                   route={route}
+                  summaries={summaries}
                 />
               ))}
             </ul>
@@ -233,6 +237,8 @@ export default function EntitiesScreen({ route }: { route: EntitiesRoute }) {
 
   const entities = list.state.status === 'ready' ? list.state.data.entities : []
   const total = list.state.status === 'ready' ? list.state.data.total : 0
+  // Names for related entities come from this page's summaries, never a fetch.
+  const summaries = new Map(entities.map((entity) => [entity.id, entity]))
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
   const pages = pageItems(route.page, totalPages)
 
@@ -439,7 +445,7 @@ export default function EntitiesScreen({ route }: { route: EntitiesRoute }) {
       }
       detail={
         route.entityId !== null ? (
-          <EntityDetail entityId={route.entityId} route={route} />
+          <EntityDetail entityId={route.entityId} route={route} summaries={summaries} />
         ) : (
           <div className="p-4">
             <p className="text-[13px] font-medium text-ink">Select an entity</p>
