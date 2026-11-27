@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import App from '../../src/App'
@@ -104,18 +104,14 @@ function entityContextRoutes(
 }
 
 describe('Entities workflow', () => {
-  it('paginates the list and resolves relationship entity names from GET', async () => {
+  it('paginates the list and links a related entity by id from the loaded summaries', async () => {
     window.history.replaceState(null, '', '/#/entities/21')
-    installFetchStub([
+    const fetcher = installFetchStub([
       ...connectionRoutes,
       { match: '/api/v1/entities', handler: entitiesListHandler },
       {
         match: /^\/api\/v1\/entities\/21$/,
         handler: () => jsonResponse(entity21Detail),
-      },
-      {
-        match: /^\/api\/v1\/entities\/1$/,
-        handler: () => jsonResponse(entityDetailOldest),
       },
       {
         match: '/api/v1/entities/21/memories',
@@ -141,19 +137,6 @@ describe('Entities workflow', () => {
             total: 1,
           }),
       },
-      {
-        match: /^\/api\/v1\/entities\/30$/,
-        handler: () =>
-          jsonResponse({
-            id: 30,
-            name: 'Off-page relation target',
-            entity_type: 'Team',
-            notes: 'Related off list page.',
-            tags: [],
-            aka: [],
-            project_ids: [1],
-          }),
-      },
     ])
 
     render(<App />)
@@ -172,10 +155,93 @@ describe('Entities workflow', () => {
     expect(memoryLink).toHaveAttribute('href', '#/memories/101')
 
     const relationLink = await within(screen.getByLabelText('Relationships')).findByRole('link', {
-      name: /Off-page relation target/,
+      name: /Entity #30/,
     })
-    expect(relationLink).toHaveTextContent('Team')
+    expect(relationLink).toHaveTextContent('works_at')
+    expect(relationLink).toHaveTextContent('outgoing')
     expect(relationLink).toHaveAttribute('href', '#/entities/30')
+    expect(fetcher.requests.some((request) => request.url.pathname === '/api/v1/entities/30')).toBe(
+      false,
+    )
+  })
+
+  it('never fetches an unselected related entity, repeated or distinct', async () => {
+    // Six rows point at one entity and six types are distinct, so a name lookup
+    // per row would show up here as six requests for the same record.
+    window.history.replaceState(null, '', '/#/entities/21')
+    const repeatedTypes = ['works_at', 'owns', 'manages', 'advises', 'reports_to', 'partners_with']
+    const relationships = [
+      ...repeatedTypes.map((relationship_type, index) => ({
+        id: index + 1,
+        source_entity_id: 21,
+        target_entity_id: 20,
+        relationship_type,
+      })),
+      { id: 7, source_entity_id: 21, target_entity_id: 19, relationship_type: 'member_of' },
+      { id: 8, source_entity_id: 99, target_entity_id: 21, relationship_type: 'supplies' },
+    ]
+    const fetchedRecord = (id: number) => () =>
+      jsonResponse({
+        id,
+        name: `Fetched record ${id}`,
+        entity_type: 'Team',
+        notes: 'This record must not be requested.',
+        tags: [],
+        aka: [],
+        project_ids: [1],
+      })
+    const fetcher = installFetchStub([
+      ...entityContextRoutes(21, {
+        relationships: () => jsonResponse({ relationships, total: relationships.length }),
+      }),
+      // Available if asked for, so the assertions below decide the outcome
+      // rather than an unexpected-route error.
+      { match: /^\/api\/v1\/entities\/19$/, handler: fetchedRecord(19) },
+      { match: /^\/api\/v1\/entities\/20$/, handler: fetchedRecord(20) },
+      { match: /^\/api\/v1\/entities\/99$/, handler: fetchedRecord(99) },
+    ])
+
+    render(<App />)
+
+    const section = await screen.findByLabelText('Relationships')
+    const detailRequests = () =>
+      fetcher.requests
+        .filter((request) => /^\/api\/v1\/entities\/\d+$/.test(request.url.pathname))
+        .map((request) => request.url.pathname)
+
+    // The count decides the bug: one request for the selected entity, none for
+    // the eight relationship rows, however many times they repeat a target.
+    await waitFor(() => {
+      expect(detailRequests()).toEqual(['/api/v1/entities/21'])
+    })
+
+    const repeated = await within(section).findAllByRole('link', { name: /Entity page one 20/ })
+    expect(repeated).toHaveLength(6)
+    for (const link of repeated) {
+      expect(link).toHaveTextContent('Individual')
+      expect(link).toHaveAttribute('href', '#/entities/20')
+    }
+    expect(within(section).getByText('works_at')).toBeInTheDocument()
+    expect(within(section).getByRole('link', { name: /Entity page one 19/ })).toBeInTheDocument()
+
+    // A related entity outside the loaded page keeps the relationship detail it
+    // does have (type and direction) and stays an id-only link.
+    const offPage = within(section).getByRole('link', { name: /Entity #99/ })
+    expect(offPage).toHaveTextContent('—')
+    expect(offPage).toHaveTextContent('supplies')
+    expect(offPage).toHaveTextContent('incoming')
+    expect(screen.queryByText('Fetched record 19')).not.toBeInTheDocument()
+    expect(screen.queryByText('Fetched record 20')).not.toBeInTheDocument()
+    expect(screen.queryByText('Fetched record 99')).not.toBeInTheDocument()
+
+    // Scope as well as count: none of these ids may appear at all.
+    for (const unselected of [
+      '/api/v1/entities/19',
+      '/api/v1/entities/20',
+      '/api/v1/entities/99',
+    ]) {
+      expect(fetcher.requests.some((request) => request.url.pathname === unselected)).toBe(false)
+    }
   })
 
   it('uses Previous and numbered page links with matching list offsets', async () => {
@@ -237,9 +303,10 @@ describe('Entities workflow', () => {
     expect(screen.getByLabelText('Entity type filter')).toHaveValue('Team')
   })
 
-  it('shows an entity id fallback when a related entity GET fails', async () => {
+  it('links an out-of-page related entity without requesting its record', async () => {
     window.history.replaceState(null, '', '/#/entities/21')
-    installFetchStub([
+    // No stub for entity 99: any request for it fails the test as unexpected.
+    const fetcher = installFetchStub([
       ...entityContextRoutes(21, {
         relationships: () =>
           jsonResponse({
@@ -254,16 +321,14 @@ describe('Entities workflow', () => {
             total: 1,
           }),
       }),
-      {
-        match: /^\/api\/v1\/entities\/99$/,
-        handler: () => jsonResponse({ error: 'Entity not found' }, 404),
-      },
     ])
 
     render(<App />)
 
     expect(await screen.findByRole('link', { name: /Entity #99/ })).toBeInTheDocument()
-    expect(screen.queryByText('Off-page relation target')).not.toBeInTheDocument()
+    expect(fetcher.requests.some((request) => request.url.pathname === '/api/v1/entities/99')).toBe(
+      false,
+    )
   })
 
   it('deep-links to an entity that is not on the current list page (newest-first list)', async () => {
