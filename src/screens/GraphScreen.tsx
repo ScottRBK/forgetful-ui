@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { ApiError, getGraphOverview, getNodeDetail, getSubgraph, isAbortError } from '../api/client'
 import type {
   GraphNodeRecord,
@@ -11,7 +11,9 @@ import type {
 import { EmptyPanel, ErrorPanel } from '../components/Feedback'
 import { AlertIcon, ArrowLeftIcon, RefreshIcon } from '../components/Icons'
 import { type CapabilityState, featureState } from '../hooks/useCapabilities'
+import { useGraphInspectorClear } from '../hooks/useKeyboardShortcuts'
 import { asString, asStringList, nodeNumber } from '../lib/format'
+import { graphNodeHref } from '../lib/graphNodeLinks'
 import {
   CORE_GRAPH_NODE_TYPES,
   GRAPH_NODE_TYPES,
@@ -494,6 +496,7 @@ function GraphViewBody({
   hiddenEdgeCount?: number
 }) {
   const selectedNode = nodes.find((node) => node.id === selectedId) ?? null
+  const resourceLink = selectedNode ? graphNodeHref(selectedNode) : null
   const types = Array.from(new Set(nodes.map((node) => node.type)))
 
   return (
@@ -548,6 +551,13 @@ function GraphViewBody({
                 nodeType={selectedNode.type}
                 onRetry={onRetryDetail}
               />
+              {resourceLink && (
+                <div className="border-t border-line p-3">
+                  <a href={resourceLink.href} className="btn-secondary">
+                    {resourceLink.label}
+                  </a>
+                </div>
+              )}
               {focusHref && selectedNode.type === 'memory' && (
                 <div className="border-t border-line p-3">
                   <a href={focusHref(selectedNode)} className="btn-secondary">
@@ -627,6 +637,8 @@ function OverviewGraphView({
   })
   const [refreshToken, setRefreshToken] = useState(0)
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const clearNodeSelection = useCallback(() => setSelectedNodeId(null), [])
+  useGraphInspectorClear(clearNodeSelection)
 
   const capabilityResolved = capabilities.status !== 'loading'
   const effectiveTypes = useMemo(() => {
@@ -980,6 +992,8 @@ function OverviewGraphView({
 function FocusedGraphView({ route, memoryId }: { route: GraphRoute; memoryId: number }) {
   const [graphState, setGraphState] = useState<GraphState>({ status: 'loading' })
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
+  const clearNodeSelection = useCallback(() => setSelectedNodeId(null), [])
+  useGraphInspectorClear(clearNodeSelection)
   const [refreshToken, setRefreshToken] = useState(0)
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshToken triggers a reload

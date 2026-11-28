@@ -711,6 +711,7 @@ export function MemoriesScreen({ route }: { route: MemoryRoute }) {
               </label>
               <input
                 id="memory-search"
+                data-shortcut-search=""
                 aria-label="Search memories"
                 value={searchInput}
                 onChange={(event) => setSearchInput(event.target.value)}
