@@ -17,11 +17,13 @@ import {
   GRAPH_NODE_TYPES,
   isGraphNodeType,
   nodeColorFor,
+  nodeFocusLabel,
   nodeTypeLabel,
   normalizeGraphNodeTypes,
   normalizeHiddenGraphNodeTypes,
+  parseGraphNodeId,
 } from '../lib/graphStyle'
-import type { GraphRoute } from '../router'
+import type { GraphFocus, GraphRoute } from '../router'
 import { graphHref, memoriesHref, navigate } from '../router'
 
 const GraphCanvas = lazy(() => import('../components/GraphCanvas'))
@@ -63,6 +65,10 @@ const longFields = new Set(['content', 'code', 'description', 'notes', 'context'
 
 function fieldLabel(key: string): string {
   return key.replace(/_/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase())
+}
+
+function sentenceCase(value: string): string {
+  return value.charAt(0).toUpperCase() + value.slice(1)
 }
 
 function errorMessage(error: unknown): string {
@@ -490,10 +496,11 @@ function GraphViewBody({
   centerId?: string
   detailState: NodeDetailState
   onRetryDetail: () => void
-  focusHref?: (node: GraphNodeRecord) => string
+  focusHref?: (node: GraphNodeRecord) => string | null
   hiddenEdgeCount?: number
 }) {
   const selectedNode = nodes.find((node) => node.id === selectedId) ?? null
+  const selectedFocusHref = selectedNode && focusHref ? focusHref(selectedNode) : null
   const types = Array.from(new Set(nodes.map((node) => node.type)))
 
   return (
@@ -548,9 +555,9 @@ function GraphViewBody({
                 nodeType={selectedNode.type}
                 onRetry={onRetryDetail}
               />
-              {focusHref && selectedNode.type === 'memory' && (
+              {selectedFocusHref !== null && (
                 <div className="border-t border-line p-3">
-                  <a href={focusHref(selectedNode)} className="btn-secondary">
+                  <a href={selectedFocusHref} className="btn-secondary">
                     Focus neighbourhood
                   </a>
                 </div>
@@ -958,9 +965,11 @@ function OverviewGraphView({
             onSelect={setSelectedNodeId}
             detailState={detail.state}
             onRetryDetail={detail.retry}
-            focusHref={(node) =>
-              graphHref({
-                memoryId: nodeNumber(node.id),
+            focusHref={(node) => {
+              const focus = parseGraphNodeId(node.id)
+              if (focus === null) return null
+              return graphHref({
+                focus,
                 depth: 1,
                 page: route.page,
                 projectId: route.projectId,
@@ -970,34 +979,34 @@ function OverviewGraphView({
                 sortOrder: route.sortOrder,
                 importanceMin: route.importanceMin,
               })
-            }
+            }}
           />
         ))}
     </div>
   )
 }
 
-function FocusedGraphView({ route, memoryId }: { route: GraphRoute; memoryId: number }) {
+function FocusedGraphView({ route, focus }: { route: GraphRoute; focus: GraphFocus }) {
   const [graphState, setGraphState] = useState<GraphState>({ status: 'loading' })
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null)
   const [refreshToken, setRefreshToken] = useState(0)
+  const centerId = `${focus.type}_${focus.id}`
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: refreshToken triggers a reload
   useEffect(() => {
     const controller = new AbortController()
     let active = true
     setGraphState({ status: 'loading' })
-    getSubgraph({ memoryId, depth: route.depth, maxNodes: MAX_NODES }, controller.signal)
+    getSubgraph({ nodeId: centerId, depth: route.depth, maxNodes: MAX_NODES }, controller.signal)
       .then((data) => {
         if (!active || controller.signal.aborted) return
         if (!Array.isArray(data.nodes) || !Array.isArray(data.edges)) {
           setGraphState({ status: 'error', message: 'The graph response was not valid.' })
           return
         }
-        const center = `memory_${memoryId}`
         setGraphState({ status: 'ready', data })
         setSelectedNodeId((current) =>
-          current && data.nodes.some((node) => node.id === current) ? current : center,
+          current && data.nodes.some((node) => node.id === current) ? current : centerId,
         )
       })
       .catch((error: unknown) => {
@@ -1012,7 +1021,7 @@ function FocusedGraphView({ route, memoryId }: { route: GraphRoute; memoryId: nu
       active = false
       controller.abort()
     }
-  }, [memoryId, route.depth, refreshToken])
+  }, [centerId, route.depth, refreshToken])
 
   const nodes = graphState.status === 'ready' ? graphState.data.nodes : []
   const selectedNode = nodes.find((node) => node.id === selectedNodeId) ?? null
@@ -1024,7 +1033,6 @@ function FocusedGraphView({ route, memoryId }: { route: GraphRoute; memoryId: nu
   }, [graphState])
   const hiddenEdgeCount =
     graphState.status === 'ready' ? graphState.data.edges.length - visibleEdges.length : 0
-  const centerId = `memory_${memoryId}`
   const overviewHref = graphHref({
     page: route.page,
     projectId: route.projectId,
@@ -1041,7 +1049,7 @@ function FocusedGraphView({ route, memoryId }: { route: GraphRoute; memoryId: nu
         <div className="flex flex-wrap items-center gap-2">
           <a
             href={memoriesHref({
-              memoryId,
+              memoryId: focus.type === 'memory' ? focus.id : null,
               page: route.page,
               projectId: route.projectId,
               sortBy: route.sortBy,
@@ -1051,14 +1059,14 @@ function FocusedGraphView({ route, memoryId }: { route: GraphRoute; memoryId: nu
             className="btn-secondary"
           >
             <ArrowLeftIcon className="h-3.5 w-3.5" />
-            Back to memory
+            {focus.type === 'memory' ? 'Back to memory' : 'Back to memories'}
           </a>
           <a href={overviewHref} className="btn-secondary">
             Overview
           </a>
           <div className="min-w-0">
             <h2 className="truncate text-[13px] font-semibold text-ink">
-              Graph around memory #{memoryId}
+              Graph around {nodeFocusLabel(focus.type, focus.id)}
             </h2>
             <p className="text-[10px] text-muted">
               {graphState.status === 'ready'
@@ -1081,7 +1089,7 @@ function FocusedGraphView({ route, memoryId }: { route: GraphRoute; memoryId: nu
                   <a
                     key={depth}
                     href={graphHref({
-                      memoryId,
+                      focus,
                       depth,
                       page: route.page,
                       projectId: route.projectId,
@@ -1128,9 +1136,12 @@ function FocusedGraphView({ route, memoryId }: { route: GraphRoute; memoryId: nu
 
       {graphState.status === 'missing' && (
         <div className="rounded-md border border-copper/25 bg-copper-soft/60 p-5">
-          <p className="text-[13px] font-semibold text-copper">Memory not found</p>
+          <p className="text-[13px] font-semibold text-copper">
+            {nodeTypeLabel(focus.type)} not found
+          </p>
           <p className="mt-1 text-[12px] text-ink-soft">
-            Memory #{memoryId} is unavailable, so no graph can be loaded.
+            {sentenceCase(nodeFocusLabel(focus.type, focus.id))} is unavailable, so no graph can be
+            loaded.
           </p>
           <a
             href={memoriesHref({})}
@@ -1187,7 +1198,7 @@ export default function GraphScreen({
   capabilities: CapabilityState
   retryCapabilities: () => void
 }) {
-  if (route.memoryId === null) {
+  if (route.focus === null) {
     return (
       <OverviewGraphView
         route={route}
@@ -1196,5 +1207,5 @@ export default function GraphScreen({
       />
     )
   }
-  return <FocusedGraphView route={route} memoryId={route.memoryId} />
+  return <FocusedGraphView route={route} focus={route.focus} />
 }

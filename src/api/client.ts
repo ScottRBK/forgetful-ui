@@ -160,11 +160,11 @@ export function getGraphOverview(
 }
 
 export function getSubgraph(
-  params: { memoryId: number; depth: number; maxNodes: number },
+  params: { nodeId: string; depth: number; maxNodes: number },
   signal?: AbortSignal,
 ): Promise<SubgraphResponse> {
   const query = new URLSearchParams({
-    node_id: `memory_${params.memoryId}`,
+    node_id: params.nodeId,
     depth: String(params.depth),
     max_nodes: String(params.maxNodes),
   })

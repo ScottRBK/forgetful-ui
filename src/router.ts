@@ -4,6 +4,7 @@ import {
   CORE_GRAPH_NODE_TYPES,
   normalizeGraphNodeTypes,
   normalizeHiddenGraphNodeTypes,
+  parseGraphNodeId,
 } from './lib/graphStyle'
 
 export type MemorySortBy = 'updated_at' | 'importance' | 'title' | 'project_name'
@@ -29,9 +30,14 @@ export interface MemoryRoute extends MemoryQuery {
   projectId: number | null
 }
 
+export interface GraphFocus {
+  type: GraphNodeType
+  id: number
+}
+
 export interface GraphRoute extends MemoryQuery {
   kind: 'graph'
-  memoryId: number | null
+  focus: GraphFocus | null
   depth: number
   page: number
   projectId: number | null
@@ -217,6 +223,16 @@ function memoryListQueryValues(
   }
 }
 
+// `node=<type>_<id>` is the canonical form, matching the server's node_id. Links
+// written before the graph could focus any type used `memory=<id>`, so that
+// still parses.
+function graphFocusFromParams(params: URLSearchParams): GraphFocus | null {
+  const node = params.get('node')
+  if (node !== null && node !== '') return parseGraphNodeId(node)
+  const memoryId = optionalPositiveInt(params.get('memory'))
+  return memoryId === null ? null : { type: 'memory', id: memoryId }
+}
+
 function parseQuery(query: string, route: MemoryRoute | GraphRoute): void {
   const params = new URLSearchParams(query)
   route.page = positiveInt(params.get('page'), 1)
@@ -272,7 +288,7 @@ export function parseRoute(hash: string): AppRoute {
     const params = new URLSearchParams(query)
     const route: GraphRoute = {
       kind: 'graph',
-      memoryId: optionalPositiveInt(params.get('memory')),
+      focus: graphFocusFromParams(params),
       depth: 1,
       page: 1,
       projectId: null,
@@ -413,7 +429,7 @@ export function memoriesHref(params: {
 }
 
 export function graphHref(params: {
-  memoryId?: number | null
+  focus?: GraphFocus | null
   depth?: number
   page?: number
   projectId?: number | null
@@ -433,7 +449,7 @@ export function graphHref(params: {
     nodeTypes.length === CORE_GRAPH_NODE_TYPES.length &&
     nodeTypes.every((type, index) => type === CORE_GRAPH_NODE_TYPES[index])
   const query = queryString({
-    memory: params.memoryId ?? null,
+    node: params.focus ? `${params.focus.type}_${params.focus.id}` : null,
     depth: depth > 1 ? depth : null,
     ...memoryListQueryValues(params),
     types: defaultTypes ? null : nodeTypes.join(','),

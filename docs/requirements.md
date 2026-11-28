@@ -60,9 +60,10 @@ seed, reset, or migrate the connected database.
 ### Graph
 
 - Load the graph library and graph data only when the Graph screen is opened.
-- Bare `#/graph` and the sidebar Graph link open an overview. A selected memory's existing graph
-  link opens a bounded focused neighbourhood. Selecting a node in the overview opens detail only;
-  replacing the overview with a neighbourhood must be an explicit action.
+- Bare `#/graph` and the sidebar Graph link open an overview. A bounded focused neighbourhood is
+  available for any node type the subgraph endpoint accepts as a centre: a memory through its
+  existing graph link, any other node through an explicit action in the overview. Selecting a node
+  in the overview opens detail only; replacing the overview with a neighbourhood must be explicit.
 - The overview shows all non-obsolete memories and all projects, including unlinked projects.
   Request `GET /api/v1/graph` with explicit `node_types=memory,project`, small bounded pages (100
   memories), stable created-at ordering, and server-returned pagination metadata. Do not assemble
