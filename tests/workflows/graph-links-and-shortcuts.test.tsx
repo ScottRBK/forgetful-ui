@@ -1,11 +1,17 @@
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
-import { describe, expect, it } from 'vitest'
+import { beforeAll, describe, expect, it, vi } from 'vitest'
 import App from '../../src/App'
 import type { GraphNodeRecord } from '../../src/api/types'
 import { graphNodeHref } from '../../src/lib/graphNodeLinks'
 import { installFetchStub, jsonResponse } from '../helpers/fetchStub'
 import { memory, subgraph } from '../helpers/synthetic'
+
+vi.mock('../../src/components/GraphCanvas', () => ({
+  default: function GraphCanvasMock() {
+    return <div data-testid="graph-canvas-mock" aria-hidden="true" />
+  },
+}))
 
 function node(
   type: GraphNodeRecord['type'],
@@ -14,6 +20,10 @@ function node(
 ): GraphNodeRecord {
   return { id, type, label: `Node ${id}`, data }
 }
+
+beforeAll(async () => {
+  await Promise.all([import('../../src/App'), import('../../src/screens/GraphScreen')])
+})
 
 describe('graphNodeHref', () => {
   it.each<[GraphNodeRecord['type'], string, Record<string, unknown>, string, string]>([
@@ -115,7 +125,7 @@ describe('Graph node cross-links and Escape', () => {
 
     const link = screen.getByRole('link', { name: 'Open in Entities' })
     expect(link).toHaveAttribute('href', '#/entities/9')
-  }, 15_000)
+  })
 
   it('shows a plan cross-link with the correct hash URL', async () => {
     window.history.replaceState(null, '', '/#/graph?memory=101')
@@ -187,7 +197,86 @@ describe('Graph node cross-links and Escape', () => {
 
     const link = screen.getByRole('link', { name: 'Open in Plans' })
     expect(link).toHaveAttribute('href', '#/plans/8')
-  }, 15_000)
+  })
+
+  it('steps down Plans escape from task detail to plan then list', async () => {
+    window.history.replaceState(null, '', '/#/plans/4?task=21')
+    installFetchStub([
+      { match: '/health', handler: () => jsonResponse({ status: 'healthy' }) },
+      {
+        match: '/api/v1/auth/info',
+        handler: () => jsonResponse({ authEnabled: false, authMode: 'disabled' }),
+      },
+      {
+        match: '/.well-known',
+        handler: () =>
+          jsonResponse({
+            schema_version: 1,
+            capabilities: { planning: true, skills: true, files: true, activity_stream: false },
+          }),
+      },
+      {
+        match: '/api/v1/plans/4',
+        handler: () =>
+          jsonResponse({
+            id: 4,
+            goal: 'Synthetic plan',
+            status: 'active',
+            project_id: null,
+            task_count: 1,
+          }),
+      },
+      {
+        match: '/api/v1/tasks',
+        handler: () =>
+          jsonResponse({
+            tasks: [
+              {
+                id: 21,
+                plan_id: 4,
+                description: 'Synthetic task',
+                state: 'pending',
+                priority: 1,
+              },
+            ],
+            total: 1,
+            limit: 20,
+            offset: 0,
+          }),
+      },
+      {
+        match: '/api/v1/tasks/21',
+        handler: () =>
+          jsonResponse({
+            id: 21,
+            plan_id: 4,
+            description: 'Synthetic task detail',
+            state: 'pending',
+            priority: 1,
+          }),
+      },
+      {
+        match: '/api/v1/plans',
+        handler: () =>
+          jsonResponse({
+            plans: [{ id: 4, goal: 'Synthetic plan', status: 'active', task_count: 1 }],
+            total: 1,
+            limit: 20,
+            offset: 0,
+          }),
+      },
+    ])
+
+    render(<App />)
+    await screen.findByText('Synthetic task detail')
+
+    const user = userEvent.setup()
+    await user.keyboard('{Escape}')
+    expect(window.location.hash).toBe('#/plans/4')
+
+    await user.keyboard('{Escape}')
+    expect(window.location.hash).toBe('#/plans')
+  })
 
   it('clears graph node selection when Escape is pressed', async () => {
     window.history.replaceState(null, '', '/#/graph?memory=101')

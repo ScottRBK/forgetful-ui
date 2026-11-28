@@ -71,8 +71,10 @@ export function useKeyboardShortcuts(handlers: KeyboardShortcutHandlers, enabled
         return
       }
 
-      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey) return
+      if (event.key !== '/' || event.ctrlKey || event.metaKey || event.altKey || event.isComposing)
+        return
       if (isEditableElement(target)) return
+      if (event.defaultPrevented) return
 
       event.preventDefault()
       focusPrimarySearch()

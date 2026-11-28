@@ -214,9 +214,22 @@ export default function App() {
       navigate(entitiesHref({ page: route.page, entityType: route.entityType }))
       return
     }
-    if (route.kind === 'plans' && (route.planId !== null || route.taskId !== null)) {
-      navigate(plansHref({ page: route.page, projectId: route.projectId, status: route.status }))
-      return
+    if (route.kind === 'plans') {
+      if (route.taskId !== null && route.planId !== null) {
+        navigate(
+          plansHref({
+            page: route.page,
+            projectId: route.projectId,
+            status: route.status,
+            planId: route.planId,
+          }),
+        )
+        return
+      }
+      if (route.planId !== null) {
+        navigate(plansHref({ page: route.page, projectId: route.projectId, status: route.status }))
+        return
+      }
     }
     if (route.kind === 'graph') {
       window.dispatchEvent(new CustomEvent(FORGETFUL_CLEAR_GRAPH_SELECTION))
