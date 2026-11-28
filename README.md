@@ -160,9 +160,10 @@ use the unprefixed `/api/v1` path.
   disabled features show an unavailable state and make no resource requests. Failed or malformed
   discovery means unknown, not disabled; unknown allows a careful read-only attempt and retry.
 - Timeline uses `GET /api/v1/activity` with server limit/offset and supports all five stored action
-  filters: created, updated, deleted, read, and queried. `activity_stream: false` disables new
-  activity collection and live streaming; previously stored history remains readable and is not
-  backfilled. Snapshots are labelled historical.
+  filters: created, updated, deleted, read, and queried. When `activity_stream: true`, page 1 also
+  opens `GET /api/v1/activity/stream` (native `EventSource`) to prepend live events, with a pending
+  banner on later pages. `activity_stream: false` disables the stream; stored history remains
+  readable. Snapshots are labelled historical.
 - Documents and skills are rendered as safe text. Code is inert text in a scrollable `pre`. Files
   show metadata only; binary/base64 content is not displayed or previewed.
 - Each page loads its own screen chunk and list when opened. There is no all-list preload, hidden

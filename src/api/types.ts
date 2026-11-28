@@ -348,6 +348,7 @@ export interface EntityRelationshipsResponse {
 
 export interface ActivityEventRecord {
   id: number
+  seq?: number
   entity_type: string
   entity_id: number
   action: string

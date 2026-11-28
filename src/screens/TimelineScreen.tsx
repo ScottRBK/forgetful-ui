@@ -1,7 +1,10 @@
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { listActivity } from '../api/client'
 import type { ActivityEventRecord } from '../api/types'
 import { EmptyPanel, ErrorPanel } from '../components/Feedback'
+import { type ActivityStreamStatus, useActivityStream } from '../hooks/useActivityStream'
 import { useApiData } from '../hooks/useApiData'
+import { featureState, useCapabilities } from '../hooks/useCapabilities'
 import { asNumber, asString, formatDate } from '../lib/format'
 import { pageItems } from '../lib/pagination'
 import type { TimelineRoute } from '../router'
@@ -36,6 +39,35 @@ const ENTITY_TYPES = [
   'skill',
 ]
 const ACTIONS = ['created', 'updated', 'deleted', 'read', 'queried']
+
+function streamStatusLabel(status: ActivityStreamStatus): string {
+  switch (status) {
+    case 'connecting':
+      return 'Connecting to live stream'
+    case 'live':
+      return 'Live activity stream'
+    case 'reconnecting':
+      return 'Reconnecting live stream'
+    case 'paused':
+      return 'Live stream paused'
+    default:
+      return 'Live stream disabled'
+  }
+}
+
+function streamStatusTone(status: ActivityStreamStatus): { badge: string; dot: string } {
+  switch (status) {
+    case 'live':
+      return { badge: 'bg-teal-soft text-teal-ink', dot: 'bg-teal' }
+    case 'connecting':
+    case 'reconnecting':
+      return { badge: 'bg-warn-soft text-warn-ink', dot: 'bg-warn' }
+    case 'paused':
+      return { badge: 'bg-slate-100 text-muted', dot: 'bg-slate-400' }
+    default:
+      return { badge: 'bg-slate-100 text-muted', dot: 'bg-slate-400' }
+  }
+}
 
 function eventLink(event: ActivityEventRecord): { href: string; label: string } | null {
   switch (event.entity_type) {
@@ -160,6 +192,18 @@ function EventRow({ event }: { event: ActivityEventRecord }) {
 }
 
 export default function TimelineScreen({ route }: { route: TimelineRoute }) {
+  const capabilities = useCapabilities()
+  const activityStreamFeature = featureState(capabilities.state, 'activity')
+  const activityStreamEnabled = activityStreamFeature === 'enabled'
+
+  const [paused, setPaused] = useState(false)
+  const [pendingLiveCount, setPendingLiveCount] = useState(0)
+  const [livePrepended, setLivePrepended] = useState<ActivityEventRecord[]>([])
+  const [liveTotalBoost, setLiveTotalBoost] = useState(0)
+  const [catchUp, setCatchUp] = useState<{ events: ActivityEventRecord[]; total: number } | null>(
+    null,
+  )
+
   const offset = (route.page - 1) * PAGE_SIZE
   const query = useApiData(
     `timeline-${route.page}-${route.entityType ?? ''}-${route.action ?? ''}`,
@@ -174,10 +218,80 @@ export default function TimelineScreen({ route }: { route: TimelineRoute }) {
         signal,
       ),
   )
-  const events = query.state.status === 'ready' ? query.state.data.events : []
-  const total = query.state.status === 'ready' ? query.state.data.total : 0
-  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE))
+  const apiEvents = query.state.status === 'ready' ? query.state.data.events : []
+  const apiTotal = query.state.status === 'ready' ? query.state.data.total : 0
+  const events = catchUp?.events ?? apiEvents
+  const total = catchUp?.total ?? apiTotal
+
+  const eventsRef = useRef(events)
+  eventsRef.current = events
+  const livePrependedRef = useRef(livePrepended)
+  livePrependedRef.current = livePrepended
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reset live overlay when route filters change
+  useEffect(() => {
+    setPendingLiveCount(0)
+    setLivePrepended([])
+    setLiveTotalBoost(0)
+    setCatchUp(null)
+  }, [route.page, route.entityType, route.action])
+
+  const handleLiveEvent = useCallback(
+    (event: ActivityEventRecord) => {
+      if (route.page !== 1) {
+        setPendingLiveCount((count) => count + 1)
+        return
+      }
+      const knownIds = new Set([
+        ...eventsRef.current.map((item) => item.id),
+        ...livePrependedRef.current.map((item) => item.id),
+      ])
+      if (knownIds.has(event.id)) return
+      setLivePrepended((prev) => [event, ...prev])
+      setLiveTotalBoost((boost) => boost + 1)
+    },
+    [route.page],
+  )
+
+  const handleGap = useCallback(() => {
+    if (route.page !== 1) return
+    void listActivity({
+      limit: PAGE_SIZE,
+      offset: 0,
+      entityType: route.entityType,
+      action: route.action,
+    })
+      .then((data) => {
+        setCatchUp({ events: data.events, total: data.total })
+        setLivePrepended([])
+        setLiveTotalBoost(0)
+      })
+      .catch(() => {
+        // Silent catch-up: keep the current list visible on failure.
+      })
+  }, [route.page, route.entityType, route.action])
+
+  const streamStatus = useActivityStream({
+    enabled: activityStreamEnabled && query.state.status === 'ready',
+    paused,
+    entityType: route.entityType ?? undefined,
+    action: route.action ?? undefined,
+    onEvent: handleLiveEvent,
+    onGap: handleGap,
+  })
+
+  const renderedEvents = useMemo(() => {
+    if (route.page !== 1) return events
+    const seen = new Set(events.map((item) => item.id))
+    const extras = livePrepended.filter((item) => !seen.has(item.id))
+    return [...extras, ...events]
+  }, [events, livePrepended, route.page])
+
+  const renderedTotal = route.page === 1 ? total + liveTotalBoost : total
+  const totalPages = Math.max(1, Math.ceil(renderedTotal / PAGE_SIZE))
   const pages = pageItems(route.page, totalPages)
+
+  const streamTone = streamStatusTone(streamStatus)
 
   function update(params: { entityType?: string | null; action?: string | null }) {
     navigate(
@@ -230,10 +344,63 @@ export default function TimelineScreen({ route }: { route: TimelineRoute }) {
               </option>
             ))}
           </select>
+          {activityStreamEnabled && (
+            <>
+              <span
+                className={`
+                  inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px]
+                  font-medium ${streamTone.badge}
+                `}
+                role="status"
+                aria-live="polite"
+              >
+                <span className={`h-1.5 w-1.5 rounded-full ${streamTone.dot}`} aria-hidden="true" />
+                {streamStatusLabel(streamStatus)}
+              </span>
+              <button
+                type="button"
+                className="field px-2 py-1 text-[10px]"
+                onClick={() => setPaused((value) => !value)}
+              >
+                {paused ? 'Resume live stream' : 'Pause live stream'}
+              </button>
+            </>
+          )}
           <span className="ml-auto text-[10px] text-muted">
-            {query.state.status === 'ready' ? `${total.toLocaleString()} events` : 'Loading'}
+            {query.state.status === 'ready'
+              ? `${renderedTotal.toLocaleString()} events`
+              : 'Loading'}
           </span>
         </div>
+
+        {pendingLiveCount > 0 && route.page > 1 && (
+          <div
+            role="status"
+            aria-live="polite"
+            className="flex flex-wrap items-center gap-2 border-b border-line bg-canvas/60 px-3 py-2 text-[11px] text-ink sm:px-4"
+          >
+            <span>
+              {pendingLiveCount} new live event{pendingLiveCount === 1 ? '' : 's'}
+            </span>
+            <a
+              href={timelineHref({
+                page: 1,
+                entityType: route.entityType,
+                action: route.action,
+              })}
+              className="font-medium text-teal hover:underline"
+            >
+              Jump to page 1
+            </a>
+            <button
+              type="button"
+              className="text-muted underline decoration-dotted hover:text-ink"
+              onClick={() => setPendingLiveCount(0)}
+            >
+              Dismiss
+            </button>
+          </div>
+        )}
 
         {query.state.status === 'loading' && (
           <p className="p-4 text-[12px] text-muted">Loading activity history…</p>
@@ -294,15 +461,15 @@ export default function TimelineScreen({ route }: { route: TimelineRoute }) {
               </p>
             </EmptyPanel>
           ))}
-        {events.length > 0 && (
+        {renderedEvents.length > 0 && (
           <ul aria-label="Activity events">
-            {events.map((event) => (
+            {renderedEvents.map((event) => (
               <EventRow key={event.id} event={event} />
             ))}
           </ul>
         )}
 
-        {query.state.status === 'ready' && events.length > 0 && (
+        {query.state.status === 'ready' && renderedEvents.length > 0 && (
           <div className="pagination-bar">
             <p className="text-[11px] text-muted">
               Page {route.page} of {totalPages}
@@ -344,8 +511,11 @@ export default function TimelineScreen({ route }: { route: TimelineRoute }) {
         )}
       </section>
       <p className="text-[10px] leading-relaxed text-muted">
-        Timeline reads persisted activity history only. It does not open a live stream. Snapshots
-        describe the record at the time of the event.
+        {activityStreamEnabled
+          ? 'Timeline lists stored activity history and subscribes to the live activity stream on page 1. Snapshots describe the record at the time of the event.'
+          : activityStreamFeature === 'disabled'
+            ? 'Timeline reads persisted activity history only. Live streaming is unavailable on this backend. Snapshots describe the record at the time of the event.'
+            : 'Timeline reads persisted activity history. Live streaming availability is unknown until capability discovery completes. Snapshots describe the record at the time of the event.'}
       </p>
     </div>
   )
