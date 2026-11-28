@@ -953,7 +953,7 @@ test('plans filters open an active plan board and return with filters', async ({
   await expect(detail.getByText('Synthetic task description.')).toBeVisible()
   await expect(detail.getByText('Synthetic criterion one')).toBeVisible()
   await expect(detail.getByText('Synthetic criterion two')).toBeVisible()
-  await expect(detail.getByText('65', { exact: true })).toBeVisible()
+  await expect(detail.getByRole('link', { name: '#65' })).toBeVisible()
   await expect(detail.getByText('1/2 met')).toBeVisible()
   await expect(page).toHaveURL(/#\/plans\/55\?task=66&project=1&status=active$/)
 
@@ -1095,7 +1095,7 @@ test('plan board loads detail only on selection and keeps filters when closing',
   await expect(detail.getByText('Synthetic criterion one')).toBeVisible()
   await expect(detail.getByText('Synthetic criterion two')).toBeVisible()
   await expect(detail.getByText('1/2 met')).toBeVisible()
-  await expect(detail.getByText('65', { exact: true })).toBeVisible()
+  await expect(detail.getByRole('link', { name: '#65' })).toBeVisible()
   await expect(page).toHaveURL(/#\/plans\/55\?task=66&project=1&status=active$/)
   expect(requests.filter((url) => url.pathname === '/api/v1/tasks/67')).toHaveLength(0)
 

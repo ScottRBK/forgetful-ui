@@ -5,12 +5,14 @@ import { DetailField } from '../components/DetailField'
 import { EmptyPanel, ErrorPanel } from '../components/Feedback'
 import { OutOfRangePanel } from '../components/OutOfRangePanel'
 import { PaginationBar } from '../components/PaginationBar'
+import PlanDependencyGraph from '../components/PlanDependencyGraph'
 import { ProjectSelectView } from '../components/ProjectSelect'
 import { type ApiDataState, useApiData } from '../hooks/useApiData'
 import { type CapabilityState, featureState } from '../hooks/useCapabilities'
 import { useProjectOptions } from '../hooks/useProjectOptions'
 import { useResizablePane } from '../hooks/useResizablePane'
 import { formatDate } from '../lib/format'
+import { downstreamDependentIds } from '../lib/planDependencyGraph'
 import {
   collectResourcePages,
   RESOURCE_PAGE_SIZE,
@@ -62,6 +64,7 @@ function TaskCard({
         page: route.page,
         projectId: route.projectId,
         status: route.status,
+        view: route.view,
       })}
       data-task-id={task.id}
       aria-current={selected ? 'true' : undefined}
@@ -130,13 +133,55 @@ function TaskColumn({
   )
 }
 
+function TaskDependencyChips({
+  taskIds,
+  planId,
+  route,
+  tasksById,
+}: {
+  taskIds: number[]
+  planId: number
+  route: PlansRoute
+  tasksById: Map<number, TaskSummaryRecord>
+}) {
+  return (
+    <ul className="flex flex-wrap gap-1.5">
+      {taskIds.map((depId) => {
+        const summary = tasksById.get(depId)
+        const chipLabel = summary ? `${summary.title} (${summary.state ?? 'unknown'})` : `#${depId}`
+        return (
+          <li key={depId}>
+            <a
+              href={plansHref({
+                planId,
+                taskId: depId,
+                page: route.page,
+                projectId: route.projectId,
+                status: route.status,
+                view: route.view,
+              })}
+              className="chip bg-canvas text-ink-soft hover:border-line-strong"
+            >
+              {chipLabel}
+            </a>
+          </li>
+        )
+      })}
+    </ul>
+  )
+}
+
 function TaskDetailContent({
   state,
   planId,
+  route,
+  taskSummaries,
   retry,
 }: {
   state: ApiDataState<TaskDetailRecord>
   planId: number
+  route: PlansRoute
+  taskSummaries: TaskSummaryRecord[]
   retry: () => void
 }) {
   if (state.status === 'loading' || state.status === 'idle') {
@@ -165,6 +210,9 @@ function TaskDetailContent({
   }
   const criteria = task.criteria ?? []
   const metCriteria = criteria.filter((criterion) => criterion.met).length
+  const tasksById = new Map(taskSummaries.map((summary) => [summary.id, summary]))
+  const dependencyIds = task.dependency_ids ?? []
+  const blocksIds = downstreamDependentIds(taskSummaries, task.id)
   return (
     <div className="p-4">
       <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-muted">
@@ -186,8 +234,27 @@ function TaskDetailContent({
           {metCriteria}/{criteria.length} met
         </DetailField>
         <DetailField label="Dependencies">
-          {(task.dependency_ids ?? []).length > 0 ? (task.dependency_ids ?? []).join(', ') : 'None'}
+          {dependencyIds.length === 0 ? (
+            'None'
+          ) : (
+            <TaskDependencyChips
+              taskIds={dependencyIds}
+              planId={planId}
+              route={route}
+              tasksById={tasksById}
+            />
+          )}
         </DetailField>
+        {blocksIds.length > 0 && (
+          <DetailField label="Blocks">
+            <TaskDependencyChips
+              taskIds={blocksIds}
+              planId={planId}
+              route={route}
+              tasksById={tasksById}
+            />
+          </DetailField>
+        )}
         <DetailField label="Version">{task.version ?? '—'}</DetailField>
         <DetailField label="Updated">{formatDate(task.updated_at)}</DetailField>
       </dl>
@@ -433,6 +500,23 @@ function PlanBoard({
     page: route.page,
     projectId: route.projectId,
     status: route.status,
+    view: 'board',
+  })
+  const depsViewHref = plansHref({
+    planId,
+    taskId: route.taskId,
+    page: route.page,
+    projectId: route.projectId,
+    status: route.status,
+    view: 'deps',
+  })
+  const boardViewHref = plansHref({
+    planId,
+    taskId: route.taskId,
+    page: route.page,
+    projectId: route.projectId,
+    status: route.status,
+    view: 'board',
   })
 
   if (planForView === null) {
@@ -549,6 +633,32 @@ function PlanBoard({
           </p>
         )}
 
+        <fieldset className="mt-3 inline-flex overflow-hidden rounded border border-line p-0">
+          <legend className="sr-only">Plan view</legend>
+          <a
+            href={boardViewHref}
+            data-plan-view="board"
+            aria-current={route.view === 'board' ? 'true' : undefined}
+            className={`
+              px-3 py-1.5 text-[11px] font-medium
+              ${route.view === 'board' ? 'bg-teal-soft text-teal-ink' : 'bg-panel text-ink-soft'}
+            `}
+          >
+            Board
+          </a>
+          <a
+            href={depsViewHref}
+            data-plan-view="deps"
+            aria-current={route.view === 'deps' ? 'true' : undefined}
+            className={`
+              border-l border-line px-3 py-1.5 text-[11px] font-medium
+              ${route.view === 'deps' ? 'bg-teal-soft text-teal-ink' : 'bg-panel text-ink-soft'}
+            `}
+          >
+            Dependencies
+          </a>
+        </fieldset>
+
         <a
           href={memoriesHref({ projectId: planRecord.project_id, page: 1 })}
           className="btn-secondary mt-3"
@@ -589,12 +699,12 @@ function PlanBoard({
           ref={boardRef}
           tabIndex={-1}
           data-plan-board
-          aria-label="Task board"
+          aria-label={route.view === 'deps' ? 'Task dependencies' : 'Task board'}
           className="plan-board-area panel-raised min-w-0 overflow-hidden"
         >
           <div className="flex items-center justify-between border-b border-line px-3 py-2">
             <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-muted">
-              Task board
+              {route.view === 'deps' ? 'Dependency graph' : 'Task board'}
             </p>
             {taskData && <span className="text-[10px] text-muted">{taskData.total} total</span>}
           </div>
@@ -622,20 +732,29 @@ function PlanBoard({
                   onRetry={tasks.retry}
                 />
               )}
-              <div data-board-scroll className="plan-board-scroll">
-                <div className="plan-board-columns">
-                  {TASK_STATES.map((taskState) => (
-                    <TaskColumn
-                      key={taskState.value}
-                      state={taskState.value}
-                      label={taskState.label}
-                      tasks={taskSummaries.filter((task) => task.state === taskState.value)}
-                      planId={planId}
-                      route={route}
-                    />
-                  ))}
+              {route.view === 'deps' ? (
+                <PlanDependencyGraph
+                  tasks={taskSummaries}
+                  planId={planId}
+                  route={route}
+                  selectedTaskId={taskId}
+                />
+              ) : (
+                <div data-board-scroll className="plan-board-scroll">
+                  <div className="plan-board-columns">
+                    {TASK_STATES.map((taskState) => (
+                      <TaskColumn
+                        key={taskState.value}
+                        state={taskState.value}
+                        label={taskState.label}
+                        tasks={taskSummaries.filter((task) => task.state === taskState.value)}
+                        planId={planId}
+                        route={route}
+                      />
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
             </>
           )}
         </section>
@@ -683,6 +802,8 @@ function PlanBoard({
               <TaskDetailContent
                 state={taskDetail.state}
                 planId={planId}
+                route={route}
+                taskSummaries={taskSummaries}
                 retry={taskDetail.retry}
               />
             </aside>
