@@ -534,6 +534,16 @@ body {
     overflow-wrap: anywhere;
   }
 
+  .plan-deps-scroll {
+    max-width: 100%;
+    overscroll-behavior-x: contain;
+  }
+
+  .plan-dep-node-link:focus-visible g {
+    outline: 2px solid var(--color-teal);
+    outline-offset: 2px;
+  }
+
   .task-card-title {
     overflow-wrap: anywhere;
   }

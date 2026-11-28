@@ -187,6 +187,7 @@ export interface TaskSummaryRecord {
   criteria_met?: number
   criteria_total?: number
   blocked?: boolean
+  dependency_ids?: number[]
   created_at?: string
   updated_at?: string
 }

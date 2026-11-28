@@ -51,6 +51,8 @@ export interface ProjectsRoute {
   repoName: string | null
 }
 
+export type PlansView = 'board' | 'deps'
+
 export interface PlansRoute {
   page: number
   kind: 'plans'
@@ -58,6 +60,7 @@ export interface PlansRoute {
   taskId: number | null
   projectId: number | null
   status: string | null
+  view: PlansView
 }
 
 export interface DocumentsRoute {
@@ -309,6 +312,7 @@ export function parseRoute(hash: string): AppRoute {
 
   if (first === 'plans' && segments.length <= 2) {
     const params = paramsOf(query)
+    const viewParam = params.get('view')
     return {
       kind: 'plans',
       page: positiveInt(params.get('page'), 1),
@@ -316,6 +320,7 @@ export function parseRoute(hash: string): AppRoute {
       taskId: optionalPositiveInt(params.get('task')),
       projectId: optionalPositiveInt(params.get('project')),
       status: textParam(params, 'status'),
+      view: viewParam === 'deps' ? 'deps' : 'board',
     }
   }
 
@@ -468,14 +473,17 @@ export function plansHref(params: {
   page?: number
   projectId?: number | null
   status?: string | null
+  view?: PlansView
 }): string {
   const planId = params.planId ?? null
   const page = params.page ?? 1
+  const view = params.view ?? 'board'
   const query = queryString({
     task: planId !== null ? (params.taskId ?? null) : null,
     page: page > 1 ? page : null,
     project: params.projectId ?? null,
     status: params.status ?? null,
+    view: view === 'deps' ? 'deps' : null,
   })
   return planId === null ? `#/plans${query}` : `#/plans/${planId}${query}`
 }
