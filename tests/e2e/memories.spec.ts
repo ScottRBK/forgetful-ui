@@ -681,7 +681,7 @@ test('preserves sort and filter context through Graph and back', async ({ page }
   await expect(page.getByRole('heading', { name: row.title })).toBeVisible()
   await page.getByRole('link', { name: 'Open graph' }).click()
   await expect(page).toHaveURL(
-    /#\/graph\?memory=1601&page=2&sort=importance&order=asc&project=7&importance=8$/,
+    /#\/graph\?node=memory_1601&page=2&sort=importance&order=asc&project=7&importance=8$/,
   )
   await expect(page.locator('canvas')).toBeVisible()
 

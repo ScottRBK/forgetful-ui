@@ -168,7 +168,7 @@ function DetailPane({
         </div>
         <a
           href={graphHref({
-            memoryId: memory.id,
+            focus: { type: 'memory', id: memory.id },
             page: route.page,
             projectId: route.projectId,
             depth: 1,

@@ -4,6 +4,7 @@ import { Topbar } from './components/Topbar'
 import { useCapabilities } from './hooks/useCapabilities'
 import type { ConnectionState } from './hooks/useConnection'
 import { useConnection } from './hooks/useConnection'
+import { nodeFocusLabel } from './lib/graphStyle'
 import { graphHref, memoriesHref, useHashRoute } from './router'
 import { MemoriesScreen } from './screens/MemoriesScreen'
 
@@ -73,8 +74,8 @@ function screenDetails(route: ReturnType<typeof useHashRoute>): {
   if (route.kind === 'graph') {
     return {
       title: 'Graph',
-      subtitle: route.memoryId
-        ? `Neighbourhood around memory #${route.memoryId}`
+      subtitle: route.focus
+        ? `Neighbourhood around ${nodeFocusLabel(route.focus.type, route.focus.id)}`
         : 'Knowledge graph',
     }
   }

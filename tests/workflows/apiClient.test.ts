@@ -71,7 +71,7 @@ describe('API client', () => {
       },
     ])
 
-    await getSubgraph({ memoryId: 42, depth: 2, maxNodes: 100 })
+    await getSubgraph({ nodeId: 'memory_42', depth: 2, maxNodes: 100 })
     const request = fetcher.requests[0]
     expect(request?.url.searchParams.get('node_id')).toBe('memory_42')
     expect(request?.url.searchParams.get('depth')).toBe('2')

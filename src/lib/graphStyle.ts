@@ -64,3 +64,19 @@ export function nodeColorFor(type: string): string {
 export function nodeTypeLabel(type: string): string {
   return isGraphNodeType(type) ? NODE_TYPE_LABELS[type] : type
 }
+
+/** Split a graph node id such as `entity_9` into its type and numeric id. */
+export function parseGraphNodeId(value: string): { type: GraphNodeType; id: number } | null {
+  const match = /^([a-z_]+)_(\d+)$/.exec(value)
+  if (match === null) return null
+  const type = match[1]
+  if (type === undefined || !isGraphNodeType(type)) return null
+  const id = Number(match[2])
+  return Number.isSafeInteger(id) && id > 0 ? { type, id } : null
+}
+
+/** Sentence-case label for a focused node, e.g. `entity #9`. */
+export function nodeFocusLabel(type: GraphNodeType, id: number): string {
+  const label = NODE_TYPE_LABELS[type]
+  return `${label.charAt(0).toLowerCase()}${label.slice(1)} #${id}`
+}

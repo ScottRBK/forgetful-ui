@@ -72,7 +72,7 @@ The app uses hash routing:
 - `#/memories`
 - `#/memories/<id>?page=<n>&project=<id>&sort=...&order=...&importance=...&max=...&q=...&from=...&to=...`
 - `#/graph?project=<id>&types=<comma-separated>&hide=<memory,project>`
-- `#/graph?memory=<id>&depth=<1-3>`
+- `#/graph?node=<type>_<id>&depth=<1-3>`
 - `#/projects?page=<n>&status=...&repo=...` and `#/projects/<id>?page=<n>&status=...&repo=...`
 - `#/plans?page=<n>&project=...&status=...`
 - `#/plans/<planId>?task=<taskId>&page=<n>&project=...&status=...`
@@ -198,9 +198,10 @@ use the unprefixed `/api/v1` path.
   selected. Links are faint until hover or selection highlights every incident connection
   returned by the API, regardless of source/target direction, plus its associated nodes.
   Highlighting does not restart layout, refit, or fetch data.
-- A focused view remains available from a memory's Open graph link. It requests depth 1-3 and at
-  most 100 nodes, with Back to Memories context and an explicit Overview link. Selecting a memory
-  in the overview opens detail only; Focus neighbourhood is explicit.
+- A focused view is available for any node the server accepts as a subgraph centre: a memory
+  through its Open graph link, any other node through Focus neighbourhood in the overview. It
+  requests depth 1-3 and at most 100 nodes, with Back to Memories context and an explicit Overview
+  link. Selecting a node in the overview opens detail only; Focus neighbourhood is explicit.
 - The graph library and graph code are loaded in separate chunks. Opening Memories or other
   pages does not request them.
 - Network failures are shown as failures. A 404 memory is shown as unavailable.

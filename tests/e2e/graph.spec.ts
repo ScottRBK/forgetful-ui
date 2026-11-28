@@ -2074,7 +2074,7 @@ test('overview selection opens detail without replacing the overview', async ({ 
   expect(requests.some((url) => url.pathname === '/api/v1/graph/subgraph')).toBe(false)
   await expect(page.getByRole('link', { name: 'Focus neighbourhood' })).toHaveAttribute(
     'href',
-    '#/graph?memory=1',
+    '#/graph?node=memory_1',
   )
   await expect(page.getByRole('link', { name: 'Graph' })).toHaveAttribute('href', '#/graph')
 
@@ -2091,6 +2091,121 @@ test('overview selection opens detail without replacing the overview', async ({ 
   await expect(page).toHaveURL(/#\/graph$/)
   await expect(page.getByRole('heading', { name: 'Graph overview' })).toBeVisible()
   await expect(page.locator('canvas')).toBeVisible({ timeout: 15_000 })
+})
+
+test('focuses an entity node from the overview', async ({ page }) => {
+  const requests: URL[] = []
+  await page.route('**/health', (route) =>
+    route.fulfill(json({ status: 'healthy', service: 'Forgetful' })),
+  )
+  await page.route('**/api/v1/**', async (route) => {
+    const url = new URL(route.request().url())
+    requests.push(url)
+    if (url.pathname === '/api/v1/auth/info') {
+      await route.fulfill(json({ authEnabled: false, authMode: 'disabled' }))
+      return
+    }
+    if (url.pathname === '/api/v1/graph') {
+      await route.fulfill(
+        json({
+          nodes: [
+            {
+              id: 'entity_9',
+              type: 'entity',
+              label: 'Focusable entity',
+              data: { id: 9, name: 'Focusable entity', entity_type: 'System' },
+            },
+            {
+              id: 'memory_1',
+              type: 'memory',
+              label: 'Linked memory',
+              data: { id: 1, importance: 5 },
+            },
+          ],
+          edges: [
+            {
+              id: 'entity_9_memory_1',
+              source: 'entity_9',
+              target: 'memory_1',
+              type: 'entity_memory',
+            },
+          ],
+          meta: {
+            memory_count: 1,
+            total_memory_count: 1,
+            offset: 0,
+            limit: 100,
+            has_more: false,
+            entity_count: 1,
+            project_count: 0,
+            document_count: 0,
+            code_artifact_count: 0,
+            file_count: 0,
+            skill_count: 0,
+            plan_count: 0,
+            task_count: 0,
+            edge_count: 1,
+          },
+        }),
+      )
+      return
+    }
+    if (url.pathname === '/api/v1/entities/9') {
+      await route.fulfill(
+        json({ id: 9, name: 'Focusable entity', entity_type: 'System', notes: 'Entity notes.' }),
+      )
+      return
+    }
+    if (url.pathname === '/api/v1/graph/subgraph') {
+      await route.fulfill(
+        json({
+          nodes: [
+            {
+              id: 'entity_9',
+              type: 'entity',
+              label: 'Focusable entity',
+              depth: 0,
+              data: { id: 9, name: 'Focusable entity', entity_type: 'System' },
+            },
+          ],
+          edges: [],
+          meta: {
+            center_node_id: 'entity_9',
+            depth: 1,
+            node_types: [],
+            max_nodes: 100,
+            edge_count: 0,
+            truncated: false,
+          },
+        }),
+      )
+      return
+    }
+    await route.fulfill(json({ error: 'unexpected test request' }, 500))
+  })
+
+  await page.goto('/#/graph?types=entity')
+  await expect(page.locator('canvas')).toBeVisible({ timeout: 15_000 })
+  await page.getByRole('button', { name: /Focusable entity/ }).click()
+  await expect(page.getByText('Entity notes.')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Focus neighbourhood' })).toHaveAttribute(
+    'href',
+    '#/graph?node=entity_9&types=memory%2Cproject%2Centity',
+  )
+
+  await page.getByRole('link', { name: 'Focus neighbourhood' }).click()
+  await expect(page.getByRole('heading', { name: 'Graph around entity #9' })).toBeVisible()
+  await expect(page.locator('canvas')).toBeVisible({ timeout: 15_000 })
+  const subgraph = requests.find((url) => url.pathname === '/api/v1/graph/subgraph')
+  expect(subgraph?.searchParams.get('node_id')).toBe('entity_9')
+  await expect(page.getByRole('link', { name: 'Back to memories' })).toHaveAttribute(
+    'href',
+    '#/memories',
+  )
+  await expect(page.getByRole('link', { name: 'Depth 2' })).toHaveAttribute(
+    'href',
+    '#/graph?node=entity_9&depth=2&types=memory%2Cproject%2Centity',
+  )
 })
 
 test('overview remains usable and contains long detail text at 390px', async ({ page }) => {
@@ -2812,7 +2927,7 @@ test('visibility persists through reload, focus, depth, overview, refresh and hi
   await page.getByRole('button', { name: 'Persistent memory Memory', exact: true }).click()
   await expect(page.getByRole('link', { name: 'Focus neighbourhood' })).toHaveAttribute(
     'href',
-    '#/graph?memory=1&hide=project',
+    '#/graph?node=memory_1&hide=project',
   )
   await page.getByRole('link', { name: 'Focus neighbourhood' }).click()
   await expect(page.getByRole('heading', { name: 'Graph around memory #1' })).toBeVisible()
@@ -2824,7 +2939,7 @@ test('visibility persists through reload, focus, depth, overview, refresh and hi
   )
   await expect(page.getByRole('link', { name: 'Depth 2' })).toHaveAttribute(
     'href',
-    '#/graph?memory=1&depth=2&hide=project',
+    '#/graph?node=memory_1&depth=2&hide=project',
   )
 
   await page.getByRole('link', { name: 'Overview' }).click()
@@ -3131,7 +3246,7 @@ test('opens a selected memory graph, shows a real canvas and node details', asyn
   await expect(page.getByRole('heading', { name: 'Synthetic graph memory' })).toBeVisible()
   await page.getByRole('link', { name: 'Open graph' }).click()
 
-  await expect(page).toHaveURL(/#\/graph\?memory=101/)
+  await expect(page).toHaveURL(/#\/graph\?node=memory_101/)
   await expect(page.locator('canvas')).toBeVisible()
   await expect(page.getByRole('button', { name: /Synthetic project/ })).toBeVisible()
   await expect(
@@ -3597,7 +3712,7 @@ test('shows real plan goal/context and task state/description fields', async ({ 
     await route.fulfill(json({ error: 'unexpected test request' }, 500))
   })
 
-  await page.goto('/#/graph?memory=101&depth=2')
+  await page.goto('/#/graph?node=memory_101&depth=2')
   await expect(page.locator('canvas')).toBeVisible()
   await page.getByRole('button', { name: 'Synthetic plan Plan · d1' }).click()
   await expect(page.getByText('Plan detail', { exact: true })).toBeVisible()

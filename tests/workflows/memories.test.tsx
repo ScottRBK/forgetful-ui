@@ -148,7 +148,7 @@ describe('Route context', () => {
     await user.click(link)
     expect(await screen.findByRole('link', { name: 'Open graph' })).toHaveAttribute(
       'href',
-      '#/graph?memory=101&project=1',
+      '#/graph?node=memory_101&project=1',
     )
   })
 })
