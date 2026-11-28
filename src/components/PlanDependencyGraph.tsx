@@ -121,6 +121,9 @@ export default function PlanDependencyGraph({
           >
             <path d="M0,0 L8,4 L0,8 z" fill="var(--color-teal)" />
           </marker>
+          <clipPath id="plan-dep-node-title-clip">
+            <rect x={10} y={8} width={PLAN_DEP_NODE_WIDTH - 16} height={16} />
+          </clipPath>
         </defs>
 
         {inPlanEdges.map((edge) => {
@@ -169,12 +172,14 @@ export default function PlanDependencyGraph({
           const related = highlighted.has(task.id)
           const dimmed = selectedTaskId !== null && !related
           const title = task.title
+          const nodeLabel = `${title} (${task.state ?? 'todo'}${task.blocked ? ', blocked' : ''})`
           return (
             <a
               key={task.id}
               href={href}
               data-task-id={task.id}
               data-task-graph-id={task.id}
+              aria-label={nodeLabel}
               className="plan-dep-node-link cursor-pointer"
             >
               <g transform={`translate(${x} ${y})`} opacity={dimmed ? 0.35 : 1}>
@@ -193,6 +198,7 @@ export default function PlanDependencyGraph({
                 <text
                   x={10}
                   y={18}
+                  clipPath="url(#plan-dep-node-title-clip)"
                   className="fill-[var(--color-ink)]"
                   fontSize={11}
                   fontWeight={600}
@@ -211,7 +217,7 @@ export default function PlanDependencyGraph({
                   {task.state ?? 'todo'}
                 </text>
                 <text x={68} y={39.5} className="fill-[var(--color-muted)]" fontSize={9}>
-                  P{task.priority ?? '—'}
+                  {task.priority ?? '—'}
                 </text>
                 {task.blocked && (
                   <>

@@ -500,7 +500,7 @@ function PlanBoard({
     page: route.page,
     projectId: route.projectId,
     status: route.status,
-    view: route.view,
+    view: 'board',
   })
   const depsViewHref = plansHref({
     planId,

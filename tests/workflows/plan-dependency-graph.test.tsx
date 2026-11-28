@@ -68,6 +68,22 @@ describe('buildPlanDependencyGraph', () => {
     expect(graph.cyclicTaskIds).toEqual([1, 2])
   })
 
+  it('deduplicates repeated dependency_ids and avoids false cycle detection', () => {
+    const graph = buildPlanDependencyGraph([
+      taskSummary(1),
+      taskSummary(2, { dependency_ids: [1, 1] }),
+    ])
+    expect(graph.hasCycle).toBe(false)
+    expect(graph.stats.inPlanEdgeCount).toBe(1)
+    expect(graph.edges.filter((edge) => edge.kind === 'in-plan')).toHaveLength(1)
+  })
+
+  it('detects a self-loop as a cycle', () => {
+    const graph = buildPlanDependencyGraph([taskSummary(1, { dependency_ids: [1] })])
+    expect(graph.hasCycle).toBe(true)
+    expect(graph.cyclicTaskIds).toEqual([1])
+  })
+
   it('tracks external dependency references', () => {
     const graph = buildPlanDependencyGraph([
       taskSummary(10, { dependency_ids: [999] }),
@@ -188,6 +204,14 @@ describe('Plans dependency workflow', () => {
     await user.click(within(detailOnMid).getByRole('link', { name: /Leaf task/i }))
     expect(window.location.hash).toBe('#/plans/55?task=67&view=deps')
 
+    const detailOnLeaf = screen.getByLabelText('Task detail')
+    const backToBoard = within(detailOnLeaf).getByRole('link', { name: 'Back to board' })
+    expect(backToBoard.getAttribute('href')).toBe('#/plans/55')
+    await user.click(backToBoard)
+    expect(window.location.hash).toBe('#/plans/55')
+    expect(screen.getByText('Task board')).toBeInTheDocument()
+
+    navigate(plansHref({ planId: 55, taskId: 67, view: 'deps' }))
     await user.click(screen.getByRole('link', { name: 'Board' }))
     expect(window.location.hash).toBe('#/plans/55?task=67')
     expect(screen.getByText('Task board')).toBeInTheDocument()

@@ -68,7 +68,7 @@ export function buildPlanDependencyGraph(tasks: TaskSummaryRecord[]): PlanDepend
   }
 
   for (const task of tasks) {
-    const depIds = task.dependency_ids ?? []
+    const depIds = [...new Set(task.dependency_ids ?? [])]
     for (const depId of depIds) {
       if (taskById.has(depId)) {
         edges.push({ kind: 'in-plan', from: depId, to: task.id })
