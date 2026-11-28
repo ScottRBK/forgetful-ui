@@ -1,10 +1,11 @@
-import { lazy, Suspense, useEffect } from 'react'
+import { lazy, Suspense, useCallback, useEffect } from 'react'
 import { Sidebar } from './components/Sidebar'
 import { Topbar } from './components/Topbar'
 import { useCapabilities } from './hooks/useCapabilities'
 import type { ConnectionState } from './hooks/useConnection'
 import { useConnection } from './hooks/useConnection'
-import { graphHref, memoriesHref, useHashRoute } from './router'
+import { FORGETFUL_CLEAR_GRAPH_SELECTION, useKeyboardShortcuts } from './hooks/useKeyboardShortcuts'
+import { entitiesHref, graphHref, memoriesHref, navigate, plansHref, useHashRoute } from './router'
 import { MemoriesScreen } from './screens/MemoriesScreen'
 
 const GraphScreen = lazy(() => import('./screens/GraphScreen'))
@@ -186,6 +187,43 @@ export default function App() {
       )
     }
   }, [])
+
+  const shortcutsEnabled =
+    connection.status !== 'checking' &&
+    connection.status !== 'auth-required' &&
+    connection.status !== 'access-blocked'
+
+  const handleEscape = useCallback(() => {
+    if (route.kind === 'memories' && route.memoryId !== null) {
+      navigate(
+        memoriesHref({
+          page: route.page,
+          projectId: route.projectId,
+          sortBy: route.sortBy,
+          sortOrder: route.sortOrder,
+          importanceMin: route.importanceMin,
+          importanceMax: route.importanceMax,
+          q: route.q,
+          updatedFrom: route.updatedFrom,
+          updatedTo: route.updatedTo,
+        }),
+      )
+      return
+    }
+    if (route.kind === 'entities' && route.entityId !== null) {
+      navigate(entitiesHref({ page: route.page, entityType: route.entityType }))
+      return
+    }
+    if (route.kind === 'plans' && (route.planId !== null || route.taskId !== null)) {
+      navigate(plansHref({ page: route.page, projectId: route.projectId, status: route.status }))
+      return
+    }
+    if (route.kind === 'graph') {
+      window.dispatchEvent(new CustomEvent(FORGETFUL_CLEAR_GRAPH_SELECTION))
+    }
+  }, [route])
+
+  useKeyboardShortcuts({ onEscape: handleEscape }, shortcutsEnabled)
 
   const graphLink = graphHref({})
 
