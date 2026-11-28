@@ -490,6 +490,7 @@ export function listActivity(
     offset: number
     entityType?: string | null
     action?: string | null
+    since?: string | null
   },
   signal?: AbortSignal,
 ): Promise<ActivityListResponse> {
@@ -499,9 +500,17 @@ export function listActivity(
       offset: params.offset,
       entity_type: params.entityType ?? null,
       action: params.action ?? null,
+      since: params.since ?? null,
     }),
     signal,
   )
+}
+
+export function activityStreamUrl(params?: { entityType?: string; action?: string }): string {
+  return queryPath(`${apiRoot()}/activity/stream`, {
+    entity_type: params?.entityType ?? null,
+    action: params?.action ?? null,
+  })
 }
 
 const detailPaths: Record<GraphNodeType, string> = {
