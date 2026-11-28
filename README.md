@@ -23,6 +23,11 @@ There are no write controls, no login flow, and no session screen. Login and Ses
   `http://127.0.0.1:8022`.
 - No Python changes and no Node.js production server.
 
+On a system where the prebuilt Biome and Playwright binaries cannot start, `nix develop` provides
+Node, the lockfile dependencies and both tools at their pinned versions. See
+[docs/nix.md](./docs/nix.md) for the environment and the checks; the commands below are unchanged
+either way.
+
 ## Install and run
 
 ```bash

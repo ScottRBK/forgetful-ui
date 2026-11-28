@@ -8,7 +8,9 @@
       "!package-lock.json",
       "!test-results",
       "!AGENTS.md",
-      "!docs"
+      "!docs",
+      "!.pre-commit-config.yaml",
+      "!result"
     ]
   },
   "formatter": {
